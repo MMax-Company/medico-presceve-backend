@@ -3,23 +3,32 @@ const cors = require('cors')
 const axios = require('axios')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
-
-// 🔥 HARDCODE - Chave do Stripe
-const stripe = require('stripe')('sk_test_51TCWAKJhkU05FJjnWJ1jcMxwAg5gccQwslY67JNc0cZi1RcfogQJQVrXHLZ3eeHK0sj44b8kwE4i6wdhEWfiq6Ag00s389pQXJ')
-
-// 🔥 URL DO RENDER
-const BASE_URL = 'https://medico-prescreve-api.onrender.com'
-const PORT = process.env.PORT || 3002
-
-// UltraMsg (WhatsApp)
-const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE || '3F1C55D230E9327B7DD7AAE399BC1248I'
-const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN || 'ED06DA95B20E8893B51DC91A'
-
-// Chave para criptografia
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'minha-chave-secreta-de-32-caracteres!!'
-
 const db = require('./db')
 const memed = require('./memed')
+
+// ========================
+// 🚀 CONFIGURAÇÕES INICIAIS
+// ========================
+
+// Inicializar banco de dados
+db.initDB();
+
+// Stripe - Pagamentos
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+
+// URL base (Railway fornece automaticamente)
+const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN 
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : process.env.BASE_URL || 'http://localhost:3002'
+
+const PORT = process.env.PORT || 3002
+
+// UltraMsg - WhatsApp
+const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE
+const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN
+
+// Chave de criptografia (LGPD)
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'minha-chave-secreta-de-32-caracteres!!'
 
 const app = express()
 
@@ -94,13 +103,14 @@ async function enviarWhatsApp(numero, mensagem, tipo = 'geral') {
     params.append('token', ULTRAMSG_TOKEN)
     params.append('to', telefoneFormatado)
     params.append('body', mensagem)
-    params.append('priority', '10')
+    params.append('priority', process.env.WHATSAPP_PRIORITY || '10')
 
     await axios.post(
       `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}/messages/chat`,
       params.toString(),
       {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15000
       }
     )
 
@@ -117,7 +127,13 @@ async function enviarWhatsApp(numero, mensagem, tipo = 'geral') {
 // ========================
 app.use(cors())
 app.use(express.json())
-app.use(express.static(__dirname))
+app.use(express.urlencoded({ extended: true }))
+
+// Middleware de log para debug
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`)
+  next()
+})
 
 // ========================
 // 🏠 HOME
@@ -126,37 +142,45 @@ app.get('/', (req, res) => {
   res.json({
     status: 'online',
     mensagem: 'Doctor Prescreve API está funcionando!',
-    endpoints: ['/estatisticas', '/dashboard', '/fila', '/api/webhook/triagem']
+    versao: '2.0.0',
+    endpoints: [
+      '/estatisticas',
+      '/dashboard', 
+      '/fila',
+      '/api/webhook/triagem',
+      '/atendimentos',
+      '/memed-token'
+    ]
   })
 })
 
 // ========================
 // 📊 DASHBOARD
 // ========================
-app.get('/dashboard', (req, res) => {
-  const atendimentos = db.getAtendimentos()
-  
-  const atendimentosDecrypt = atendimentos.map(a => ({
-    ...a,
-    paciente: a.paciente ? {
-      nome: decrypt(a.paciente.nome),
-      cpf: decrypt(a.paciente.cpf),
-      telefone: decrypt(a.paciente.telefone)
-    } : a.paciente
-  }))
-  
-  const total = atendimentos.length
-  const elegiveis = atendimentos.filter(a => a.elegivel).length
-  const pagos = atendimentos.filter(a => a.pagamento).length
-  const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA').length
-  
-  res.json({
-    total,
-    elegiveis,
-    pagos,
-    fila,
-    atendimentos: atendimentosDecrypt
-  })
+app.get('/dashboard', async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    
+    const stats = {
+      total: atendimentos.length,
+      elegiveis: atendimentos.filter(a => a.elegivel).length,
+      pagos: atendimentos.filter(a => a.pagamento).length,
+      fila: atendimentos.filter(a => a.pagamento && a.status === 'FILA').length,
+      inelegiveis: atendimentos.filter(a => !a.elegivel).length,
+      ultimosAtendimentos: atendimentos.slice(0, 10).map(a => ({
+        id: a.id,
+        status: a.status,
+        elegivel: a.elegivel,
+        pagamento: a.pagamento,
+        criadoEm: a.criado_em
+      }))
+    }
+    
+    res.json(stats)
+  } catch (error) {
+    console.error('Erro no dashboard:', error)
+    res.status(500).json({ error: 'Erro interno no servidor' })
+  }
 })
 
 // ========================
@@ -165,9 +189,14 @@ app.get('/dashboard', (req, res) => {
 app.get('/memed-token', async (req, res) => {
   try {
     const token = await memed.gerarTokenPrescritor()
-    res.json({ token })
+    if (token) {
+      res.json({ success: true, token })
+    } else {
+      res.status(500).json({ success: false, error: 'Não foi possível obter token Memed' })
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Erro Memed' })
+    console.error('Erro Memed:', error)
+    res.status(500).json({ success: false, error: 'Erro ao conectar com Memed' })
   }
 })
 
@@ -176,24 +205,35 @@ app.get('/memed-token', async (req, res) => {
 // ========================
 app.get('/api/create-payment/:id', async (req, res) => {
   try {
+    // Verificar se atendimento existe
+    const atendimento = await db.buscarAtendimentoPorId(req.params.id)
+    if (!atendimento) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       metadata: { atendimentoId: req.params.id },
       line_items: [{
         price_data: {
-          currency: 'brl',
-          product_data: { name: 'Consulta Assíncrona' },
-          unit_amount: 6990
+          currency: process.env.CURRENCY || 'brl',
+          product_data: { 
+            name: process.env.PRODUCT_NAME || 'Consulta Assíncrona',
+            description: 'Consulta médica online com prescrição digital'
+          },
+          unit_amount: parseInt(process.env.PRODUCT_PRICE) || 6990
         },
         quantity: 1
       }],
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/cancel`
+      cancel_url: `${BASE_URL}/cancel`,
+      customer_email: atendimento.paciente_email || undefined
     })
+    
     res.json({ url: session.url })
   } catch (err) {
-    console.log(err)
+    console.error('Erro ao criar pagamento:', err)
     res.status(500).json({ error: err.message })
   }
 })
@@ -202,48 +242,39 @@ app.get('/api/create-payment/:id', async (req, res) => {
 // 🧠 TRIAGEM (CORE DO SISTEMA)
 // ========================
 app.post('/api/webhook/triagem', async (req, res) => {
-  if (!req.body) {
+  if (!req.body || Object.keys(req.body).length === 0) {
     return res.status(400).json({ error: 'Body vazio' })
   }
 
   const { paciente = {}, triagem = {} } = req.body
 
-  if (!paciente || !triagem) {
-    return res.status(400).json({ error: 'Dados incompletos' })
+  if (!paciente.nome || !triagem.doencas) {
+    return res.status(400).json({ error: 'Dados incompletos: paciente.nome e triagem.doencas são obrigatórios' })
   }
 
   const id = req.body?.id || uuidv4()
 
+  // Processamento da elegibilidade
   let doencaTexto = ''
   if (Array.isArray(triagem?.doencas)) {
-    doencaTexto = triagem.doencas[0] || ''
+    doencaTexto = triagem.doencas.join(' ').toLowerCase()
   } else {
-    doencaTexto = triagem?.doencas || ''
+    doencaTexto = triagem?.doencas?.toString().toLowerCase() || ''
   }
 
-  doencaTexto = doencaTexto.toString().toLowerCase()
+  const doencasValidas = ['has', 'hipertensao', 'dm', 'diabetes', 'dlp', 'dislipidemia', 'hipotireoidismo']
+  const doencaValida = doencasValidas.some(doenca => doencaTexto.includes(doenca))
   
-  let doencaValida = false
-  if (doencaTexto.includes('has') || doencaTexto.includes('hipertensao')) {
-    doencaValida = true
-  } else if (doencaTexto.includes('dm') || doencaTexto.includes('diabetes')) {
-    doencaValida = true
-  } else if (doencaTexto.includes('dlp') || doencaTexto.includes('dislipidemia')) {
-    doencaValida = true
-  } else if (doencaTexto.includes('hipotireoidismo')) {
-    doencaValida = true
-  }
-
-  const receitaValida = true
+  const receitaValida = triagem?.receitaValida !== false
   const sinaisAlerta = triagem?.sinaisAlerta === true || triagem?.sinaisAlerta === 'true' || triagem?.sinaisAlerta === 'SIM'
 
   const elegivel = doencaValida && receitaValida && !sinaisAlerta
   
   let motivo = null
   if (!elegivel) {
-    if (!doencaValida) motivo = 'Doença não atendida'
-    else if (!receitaValida) motivo = 'Receita vencida'
-    else if (sinaisAlerta) motivo = 'Sinais de alerta'
+    if (!doencaValida) motivo = 'Doença não atendida no momento'
+    else if (!receitaValida) motivo = 'Receita médica vencida ou inválida'
+    else if (sinaisAlerta) motivo = 'Sinais de alerta identificados - Procure atendimento presencial'
   }
 
   const atendimento = {
@@ -252,9 +283,14 @@ app.post('/api/webhook/triagem', async (req, res) => {
       nome: encrypt(paciente.nome || ''),
       cpf: encrypt(paciente.cpf || ''),
       telefone: encrypt(paciente.telefone || ''),
-      email: encrypt(paciente.email || '')
+      email: encrypt(paciente.email || ''),
+      data_nascimento: paciente.data_nascimento || null
     },
-    triagem,
+    triagem: {
+      ...triagem,
+      doencas: doencaTexto,
+      processadoEm: new Date().toISOString()
+    },
     elegivel,
     motivo,
     status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
@@ -262,139 +298,225 @@ app.post('/api/webhook/triagem', async (req, res) => {
     criadoEm: new Date().toISOString()
   }
 
-  const lista = db.getAtendimentos()
-  lista.push(atendimento)
-  db.saveAtendimentos(lista)
+  await db.salvarAtendimento(atendimento)
 
-  console.log('📋 Novo atendimento:', id)
+  console.log(`📋 Novo atendimento: ${id} - Elegível: ${elegivel}`)
 
+  // Enviar WhatsApp se elegível
   if (elegivel && paciente.telefone && validarTelefone(paciente.telefone)) {
-    const mensagemWhats = `Olá ${paciente.nome}! ✅ Seu atendimento foi aprovado.\n\n🔗 Link para pagamento: ${BASE_URL}/api/create-payment/${id}\n\n💰 Valor: R$ 69,90`
+    const mensagemWhats = `🏥 *Doctor Prescreve*\n\nOlá ${paciente.nome}! ✅ Seu atendimento foi pré-aprovado.\n\n🔗 *Link para pagamento:*\n${BASE_URL}/api/create-payment/${id}\n\n💰 Valor: R$ 69,90\n\nApós o pagamento, sua receita será emitida em até 24h.`
     await enviarWhatsApp(paciente.telefone, mensagemWhats, 'triagem')
   }
 
   if (elegivel) {
     return res.json({
-      ok: true,
+      success: true,
       elegivel: true,
       atendimentoId: id,
-      pagamentoUrl: `${BASE_URL}/api/create-payment/${id}`
+      pagamentoUrl: `${BASE_URL}/api/create-payment/${id}`,
+      mensagem: 'Atendimento elegível. Realize o pagamento para continuar.'
     })
   }
 
   return res.json({
-    ok: false,
+    success: false,
     elegivel: false,
-    motivo
+    motivo,
+    mensagem: `Infelizmente não podemos prosseguir. Motivo: ${motivo}`
   })
 })
 
 // ========================
-// 💰 SUCCESS
+// 💰 SUCCESS (Pós-pagamento)
 // ========================
 app.get('/success', async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.retrieve(req.query.session_id)
     const id = session.metadata.atendimentoId
 
-    const lista = db.getAtendimentos()
-    const at = lista.find(a => a.id === id)
+    const at = await db.buscarAtendimentoPorId(id)
 
     if (at) {
-      at.pagamento = true
-      at.status = at.elegivel ? 'FILA' : 'INELEGIVEL'
-      db.saveAtendimentos(lista)
+      await db.atualizarStatusPagamento(id, true, at.elegivel ? 'FILA' : 'INELEGIVEL')
       
-      if (at.paciente?.telefone) {
-        const telefone = decrypt(at.paciente.telefone)
+      // Emitir receita via Memed
+      if (at.elegivel) {
+        try {
+          const receita = await memed.emitirReceita(at)
+          console.log(`📄 Receita emitida: ${receita.link}`)
+        } catch (error) {
+          console.error('Erro ao emitir receita:', error)
+        }
+      }
+      
+      // Enviar WhatsApp de confirmação
+      if (at.paciente_telefone) {
+        const telefone = decrypt(at.paciente_telefone)
         if (validarTelefone(telefone)) {
-          const mensagemWhats = `✅ Pagamento confirmado! Seu atendimento ID: ${id} entrou na fila.`
+          const mensagemWhats = `✅ *Pagamento Confirmado!*\n\nSeu atendimento ID: ${id} entrou na fila.\nSua receita será emitida em breve e enviada por WhatsApp.`
           await enviarWhatsApp(telefone, mensagemWhats, 'pagamento')
         }
       }
     }
 
     res.send(`
+      <!DOCTYPE html>
       <html>
-        <head><title>Pagamento Confirmado</title></head>
-        <body style="font-family: Arial; text-align: center; padding: 50px;">
-          <h1>✅ Pagamento Confirmado!</h1>
-          <p>Seu atendimento foi registrado.</p>
-          <a href="/dashboard">Ver Dashboard</a>
+        <head>
+          <title>Pagamento Confirmado - Doctor Prescreve</title>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+            .container { background: white; border-radius: 10px; padding: 40px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            h1 { color: #28a745; }
+            button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 20px; }
+            button:hover { background: #0056b3; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>✅ Pagamento Confirmado!</h1>
+            <p>Seu pagamento foi processado com sucesso.</p>
+            <p>Sua receita será emitida em breve.</p>
+            <button onclick="window.location.href='/dashboard'">Ver Dashboard</button>
+          </div>
         </body>
       </html>
     `)
-  } catch {
-    res.send('<h1>❌ Erro no Pagamento</h1>')
+  } catch (error) {
+    console.error('Erro no success:', error)
+    res.send('<h1>❌ Erro no Pagamento</h1><p>Ocorreu um erro ao processar seu pagamento. Entre em contato com o suporte.</p>')
   }
 })
 
 // ========================
 // 📋 FILA
 // ========================
-app.get('/fila', (req, res) => {
-  const fila = db.getAtendimentos().filter(a => a.pagamento && a.status === 'FILA')
-  res.json(fila)
+app.get('/fila', async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA')
+    res.json({
+      total: fila.length,
+      atendimentos: fila.map(a => ({
+        id: a.id,
+        criadoEm: a.criado_em,
+        paciente_nome: decrypt(a.paciente_nome)
+      }))
+    })
+  } catch (error) {
+    console.error('Erro na fila:', error)
+    res.status(500).json({ error: 'Erro ao buscar fila' })
+  }
 })
 
 // ========================
 // 📋 TODOS ATENDIMENTOS
 // ========================
-app.get('/atendimentos', (req, res) => {
-  const atendimentos = db.getAtendimentos()
-  res.json(atendimentos.map(a => ({
-    id: a.id,
-    elegivel: a.elegivel,
-    status: a.status,
-    pagamento: a.pagamento,
-    criadoEm: a.criadoEm,
-    motivo: a.motivo
-  })))
+app.get('/atendimentos', async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    res.json(atendimentos.map(a => ({
+      id: a.id,
+      elegivel: a.elegivel,
+      status: a.status,
+      pagamento: a.pagamento,
+      criadoEm: a.criado_em,
+      motivo: a.motivo
+    })))
+  } catch (error) {
+    console.error('Erro ao buscar atendimentos:', error)
+    res.status(500).json({ error: 'Erro ao buscar atendimentos' })
+  }
 })
 
 // ========================
 // 👨‍⚕️ BUSCAR ATENDIMENTO POR ID
 // ========================
-app.get('/atendimento/:id', (req, res) => {
-  const atendimentos = db.getAtendimentos()
-  const at = atendimentos.find(a => a.id === req.params.id)
-  
-  if (!at) {
-    return res.status(404).json({ error: 'Atendimento não encontrado' })
+app.get('/atendimento/:id', async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const atendimentoDecrypt = {
+      ...at,
+      paciente: {
+        nome: decrypt(at.paciente_nome),
+        cpf: decrypt(at.paciente_cpf),
+        telefone: decrypt(at.paciente_telefone),
+        email: decrypt(at.paciente_email)
+      }
+    }
+    
+    res.json(atendimentoDecrypt)
+  } catch (error) {
+    console.error('Erro ao buscar atendimento:', error)
+    res.status(500).json({ error: 'Erro ao buscar atendimento' })
   }
-  
-  const atendimentoDecrypt = {
-    ...at,
-    paciente: at.paciente ? {
-      nome: decrypt(at.paciente.nome),
-      cpf: decrypt(at.paciente.cpf),
-      telefone: decrypt(at.paciente.telefone),
-      email: decrypt(at.paciente.email)
-    } : at.paciente
-  }
-  
-  res.json(atendimentoDecrypt)
 })
 
 // ========================
 // 📊 ESTATÍSTICAS
 // ========================
-app.get('/estatisticas', (req, res) => {
-  const atendimentos = db.getAtendimentos()
-  
-  res.json({
-    total: atendimentos.length,
-    elegiveis: atendimentos.filter(a => a.elegivel).length,
-    pagos: atendimentos.filter(a => a.pagamento).length,
-    naFila: atendimentos.filter(a => a.pagamento && a.status === 'FILA').length
-  })
+app.get('/estatisticas', async (req, res) => {
+  try {
+    const stats = await db.getEstatisticas()
+    res.json(stats)
+  } catch (error) {
+    console.error('Erro nas estatísticas:', error)
+    res.status(500).json({ error: 'Erro ao buscar estatísticas' })
+  }
 })
 
 // ========================
 // ❌ CANCEL
 // ========================
 app.get('/cancel', (req, res) => {
-  res.send('<h1>❌ Pagamento cancelado</h1>')
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Pagamento Cancelado - Doctor Prescreve</title>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+          .container { background: white; border-radius: 10px; padding: 40px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          h1 { color: #dc3545; }
+          button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 20px; }
+          button:hover { background: #0056b3; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>❌ Pagamento Cancelado</h1>
+          <p>Você cancelou o pagamento. Nenhum valor foi cobrado.</p>
+          <p>Você pode tentar novamente quando quiser.</p>
+          <button onclick="window.history.back()">Voltar</button>
+        </div>
+      </body>
+    </html>
+  `)
+})
+
+// ========================
+// 🏥 HEALTH CHECK (Para Railway)
+// ========================
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  })
+})
+
+// ========================
+// 🔄 ROTA 404
+// ========================
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada' })
 })
 
 // ========================
@@ -402,10 +524,13 @@ app.get('/cancel', (req, res) => {
 // ========================
 app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(50))
-  console.log(`🚀 Servidor rodando na porta ${PORT}`)
-  console.log(`🌍 URL: ${BASE_URL}`)
+  console.log(`🚀 Doctor Prescreve API - Rodando na porta ${PORT}`)
+  console.log(`🌍 URL Pública: ${BASE_URL}`)
   console.log(`🔐 Criptografia: ATIVA (LGPD)`)
-  console.log(`📱 WhatsApp: ${ULTRAMSG_INSTANCE ? 'CONFIGURADO' : 'NÃO CONFIGURADO'}`)
+  console.log(`📱 WhatsApp: ${ULTRAMSG_INSTANCE ? 'CONFIGURADO ✅' : 'NÃO CONFIGURADO ⚠️'}`)
+  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'CONFIGURADO ✅' : 'NÃO CONFIGURADO ⚠️'}`)
+  console.log(`🗄️ Banco: PostgreSQL (Railway)`)
+  console.log(`📋 Health Check: ${BASE_URL}/healthz`)
   console.log('='.repeat(50))
 })
 
