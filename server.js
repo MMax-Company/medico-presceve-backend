@@ -61,9 +61,14 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      styleSrcElem: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      workerSrc: ["'self'", "blob:"],
     },
   },
 }))
@@ -77,7 +82,7 @@ const limiter = rateLimit({
   message: 'Muitas requisições. Tente novamente mais tarde.'
 })
 app.use('/api/', limiter)
-
+    
 // ========================
 // 🔐 AUTH JWT
 // ========================
