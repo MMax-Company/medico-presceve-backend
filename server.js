@@ -313,8 +313,7 @@ app.get('/api/atendimento/:id', authMiddleware, async (req, res) => {
 })
 
 // ========================
-✅ APROVAR/RECUSAR (PROTEGIDO)
-// ========================
+// APROVAR/RECUSAR (PROTEGIDO)
 app.post('/api/decisao/:id', authMiddleware, async (req, res) => {
   const { decisao } = req.body
   const { id } = req.params
