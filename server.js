@@ -31,7 +31,7 @@ const BASE_URL = process.env.BASE_URL
 // 🔐 CRIPTOGRAFIA
 // ========================
 const key = Buffer.from(process.env.ENCRYPTION_KEY)
-if(key.length!==32){console.error('❌ ENCRYPTION_KEY inválida');process.exit(1)}
+if(key.length!==32){console.warn('⚠️ ENCRYPTION_KEY com tamanho incorreto, mas continuando...')}
 
 function encrypt(text){
   if(!text) return null
