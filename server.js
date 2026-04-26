@@ -66,7 +66,6 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https:"],
     },
   },
-}))
 
 app.use(cors())
 app.use(express.json())
