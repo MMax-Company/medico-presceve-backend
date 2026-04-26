@@ -265,7 +265,7 @@ app.get('/success',(req,res)=>res.send('<h1>✅ Pagamento confirmado!</h1><p>Seu
 app.get('/cancel',(req,res)=>res.send('<h1>❌ Pagamento cancelado</h1><p>Você pode tentar novamente.</p>'))
 app.get('/',(req,res)=>res.json({status:'online',versao:'4.0.0',endpoints:['/api/webhook/triagem','/api/payment/:id','/login','/painel-medico']}))
 
-app.listen(PORT,'0.0.0.0',()=>{
+app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(50))
   console.log(`🚀 Servidor rodando na porta ${PORT}`)
   console.log(`🌍 URL: ${BASE_URL}`)
