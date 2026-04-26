@@ -1,138 +1,352 @@
+novoserver.jsrequire('dotenv').config()
+
 const express = require('express')
 const cors = require('cors')
 const axios = require('axios')
-const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
+const helmet = require('helmet')
+const rateLimit = require('express-rate-limit')
+const jwt = require('jsonwebtoken')
+
+// Stripe
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+
 const db = require('./db')
 const memed = require('./memed')
 
-// ========================
-// 🚀 CONFIGURAÇÕES INICIAIS
-// ========================
-
-// Inicializar banco de dados
-db.initDB();
-
-// Stripe - Pagamentos
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
-
-// URL base (Railway fornece automaticamente)
-const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN 
-  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-  : process.env.BASE_URL || 'http://localhost:3002'
-
+const app = express()
 const PORT = process.env.PORT || 3002
 
-// UltraMsg - WhatsApp
-const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE
-const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN
-
-// Chave de criptografia (LGPD)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'minha-chave-secreta-de-32-caracteres!!'
-
-const app = express()
+// ========================
+// 🔐 VALIDAÇÃO OBRIGATÓRIA
+// ========================
+const requiredEnvVars = ['ENCRYPTION_KEY', 'JWT_SECRET', 'STRIPE_SECRET_KEY']
+requiredEnvVars.forEach(varName => {
+  if (!process.env[varName]) {
+    console.error(`❌ ${varName} não definida`)
+    process.exit(1)
+  }
+})
 
 // ========================
-// 🔐 FUNÇÕES DE CRIPTOGRAFIA
+// 🔐 CRIPTOGRAFIA SEGURA
 // ========================
+const algorithm = 'aes-256-cbc'
+const key = Buffer.from(process.env.ENCRYPTION_KEY)
+
 function encrypt(text) {
   if (!text) return null
-  try {
-    const cipher = crypto.createCipher('aes-256-cbc', ENCRYPTION_KEY)
-    let encrypted = cipher.update(text.toString(), 'utf8', 'hex')
-    encrypted += cipher.final('hex')
-    return encrypted
-  } catch (error) {
-    console.error('Erro ao criptografar:', error)
-    return text
-  }
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipheriv(algorithm, key, iv)
+  let encrypted = cipher.update(text, 'utf8', 'hex')
+  encrypted += cipher.final('hex')
+  return iv.toString('hex') + ':' + encrypted
 }
 
-function decrypt(encryptedText) {
-  if (!encryptedText) return null
-  try {
-    const decipher = crypto.createDecipher('aes-256-cbc', ENCRYPTION_KEY)
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8')
-    decrypted += decipher.final('utf8')
-    return decrypted
-  } catch (error) {
-    console.error('Erro ao descriptografar:', error)
-    return encryptedText
-  }
+function decrypt(text) {
+  if (!text) return null
+  const parts = text.split(':')
+  const iv = Buffer.from(parts[0], 'hex')
+  const encryptedText = parts[1]
+  const decipher = crypto.createDecipheriv(algorithm, key, iv)
+  let decrypted = decipher.update(encryptedText, 'hex', 'utf8')
+  decrypted += decipher.final('utf8')
+  return decrypted
 }
 
 // ========================
-// 📱 VALIDAÇÃO DE TELEFONE
+// 🛡️ SEGURANÇA (HELMET + RATE LIMIT)
 // ========================
-function validarTelefone(telefone) {
-  if (!telefone) return false
-  const numeros = telefone.toString().replace(/\D/g, '')
-  if (numeros.length === 11 || numeros.length === 13) return true
-  return false
-}
-
-function formatarTelefone(telefone) {
-  const numeros = telefone.toString().replace(/\D/g, '')
-  if (numeros.length === 11) return `+55${numeros}`
-  if (numeros.length === 13 && numeros.startsWith('55')) return `+${numeros}`
-  return null
-}
-
-// ========================
-// 📱 WHATSAPP - ULTRAMSG
-// ========================
-async function enviarWhatsApp(numero, mensagem, tipo = 'geral') {
-  if (!validarTelefone(numero)) {
-    console.log(`⚠️ Telefone inválido: ${numero}`)
-    return false
-  }
-
-  const telefoneFormatado = formatarTelefone(numero)
-  if (!telefoneFormatado) {
-    console.log(`⚠️ Não foi possível formatar o telefone: ${numero}`)
-    return false
-  }
-
-  if (!ULTRAMSG_INSTANCE || !ULTRAMSG_TOKEN) {
-    console.log('⚠️ UltraMsg não configurada')
-    return false
-  }
-
-  try {
-    const params = new URLSearchParams()
-    params.append('token', ULTRAMSG_TOKEN)
-    params.append('to', telefoneFormatado)
-    params.append('body', mensagem)
-    params.append('priority', process.env.WHATSAPP_PRIORITY || '10')
-
-    await axios.post(
-      `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}/messages/chat`,
-      params.toString(),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 15000
-      }
-    )
-
-    console.log(`✅ WhatsApp enviado (${tipo}): ${telefoneFormatado}`)
-    return true
-  } catch (error) {
-    console.error('❌ WhatsApp erro:', error.response?.data || error.message)
-    return false
-  }
-}
-
-// ========================
-// 🔥 MIDDLEWARES
-// ========================
+app.use(helmet())
 app.use(cors())
 app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
 
-// Middleware de log para debug
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`)
-  next()
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Muitas requisições. Tente novamente mais tarde.'
+})
+app.use('/api/', limiter)
+
+// ========================
+// 🔐 AUTH JWT
+// ========================
+function gerarToken() {
+  return jwt.sign({ role: 'medico' }, process.env.JWT_SECRET, { expiresIn: '8h' })
+}
+
+function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1]
+  if (!token) return res.status(401).json({ error: 'Não autorizado' })
+  try {
+    jwt.verify(token, process.env.JWT_SECRET)
+    next()
+  } catch {
+    return res.status(403).json({ error: 'Token inválido' })
+  }
+}
+
+// ========================
+// 📱 WHATSAPP (UltraMsg)
+// ========================
+async function enviarWhatsApp(numero, mensagem, tipo = 'geral') {
+  if (!numero) return false
+  const telefone = numero.toString().replace(/\D/g, '')
+  if (telefone.length < 11) return false
+
+  try {
+    await axios.post(
+      `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
+      new URLSearchParams({
+        token: process.env.ULTRAMSG_TOKEN,
+        to: `+55${telefone}`,
+        body: mensagem,
+        priority: '10'
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+    )
+    console.log(`✅ WhatsApp enviado (${tipo}): ${telefone}`)
+    return true
+  } catch (err) {
+    console.error('❌ WhatsApp erro:', err.message)
+    return false
+  }
+}
+
+// ========================
+// 🧠 TRIAGEM (WEBHOOK DO TYPEBOT / N8N)
+// ========================
+app.post('/api/webhook/triagem', async (req, res) => {
+  try {
+    const { paciente = {}, triagem = {} } = req.body
+
+    if (!paciente.nome || !triagem.doencas) {
+      return res.status(400).json({ error: 'Dados incompletos: nome e doenças são obrigatórios' })
+    }
+
+    const id = crypto.randomUUID()
+
+    // Normalização de doenças
+    const doencaTexto = triagem.doencas.toString().toLowerCase()
+    const doencasValidas = ['has', 'hipertensao', 'dm', 'diabetes', 'dlp', 'dislipidemia', 'hipotireoidismo']
+    const doencaValida = doencasValidas.some(d => doencaTexto.includes(d))
+    const sinaisAlerta = triagem.sinaisAlerta === true || triagem.sinaisAlerta === 'true' || triagem.sinaisAlerta === 'SIM'
+    const elegivel = doencaValida && !sinaisAlerta
+
+    const atendimento = {
+      id,
+      paciente_nome: encrypt(paciente.nome),
+      paciente_cpf: encrypt(paciente.cpf || ''),
+      paciente_telefone: encrypt(paciente.telefone || ''),
+      paciente_email: encrypt(paciente.email || ''),
+      doencas: doencaTexto,
+      elegivel,
+      motivo: elegivel ? null : (doencaValida ? 'Sinais de alerta' : 'Doença não atendida'),
+      status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
+      pagamento: false,
+      criado_em: new Date().toISOString()
+    }
+
+    await db.salvarAtendimento(atendimento)
+
+    console.log(`📋 Novo atendimento: ${id} - Elegível: ${elegivel}`)
+
+    // WhatsApp se elegível
+    if (elegivel && paciente.telefone) {
+      const pagamentoUrl = `${process.env.BASE_URL || 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN}/api/payment/${id}`
+      await enviarWhatsApp(paciente.telefone, 
+        `🏥 *Doctor Prescreve*\n\nOlá ${paciente.nome}! ✅ Atendimento aprovado.\n\n🔗 Pagamento: ${pagamentoUrl}\n💰 Valor: R$ 69,90`,
+        'triagem'
+      )
+    }
+
+    res.json({
+      success: true,
+      elegivel,
+      atendimentoId: id,
+      pagamentoUrl: `${process.env.BASE_URL}/api/payment/${id}`
+    })
+
+  } catch (error) {
+    console.error('Erro na triagem:', error)
+    res.status(500).json({ error: 'Erro interno' })
+  }
+})
+
+// ========================
+// 💳 CRIAÇÃO DE PAGAMENTO
+// ========================
+app.get('/api/payment/:id', async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      metadata: { atendimentoId: req.params.id },
+      line_items: [{
+        price_data: {
+          currency: 'brl',
+          product_data: { name: 'Consulta Assíncrona' },
+          unit_amount: 6990
+        },
+        quantity: 1
+      }],
+      success_url: `${process.env.BASE_URL}/success`,
+      cancel_url: `${process.env.BASE_URL}/cancel`
+    })
+
+    res.json({ url: session.url })
+  } catch (error) {
+    console.error('Erro criar pagamento:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// ========================
+// 🔥 WEBHOOK DO STRIPE (CONFIRMAÇÃO REAL)
+// ========================
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature']
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+  if (!webhookSecret) {
+    console.log('⚠️ STRIPE_WEBHOOK_SECRET não configurado')
+    return res.status(200).json({ received: true })
+  }
+
+  let event
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret)
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`)
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object
+    const id = session.metadata.atendimentoId
+
+    await db.atualizarStatusPagamento(id, true, 'FILA')
+    const at = await db.buscarAtendimentoPorId(id)
+
+    // Emitir receita via Memed
+    if (at?.elegivel) {
+      try {
+        await memed.emitirReceita(at)
+        console.log(`📄 Receita emitida para ${id}`)
+      } catch (error) {
+        console.error('Erro ao emitir receita:', error)
+      }
+    }
+
+    // WhatsApp de confirmação
+    if (at?.paciente_telefone) {
+      const telefone = decrypt(at.paciente_telefone)
+      await enviarWhatsApp(telefone, 
+        `✅ *Pagamento Confirmado!*\n\nSeu atendimento ID: ${id} entrou na fila.`,
+        'pagamento'
+      )
+    }
+  }
+
+  res.json({ received: true })
+})
+
+// ========================
+// 👨‍⚕️ LOGIN MÉDICO (JWT)
+// ========================
+app.post('/login', (req, res) => {
+  const { senha } = req.body
+  if (senha !== process.env.MEDICO_PASS) {
+    return res.status(401).json({ error: 'Senha inválida' })
+  }
+  const token = gerarToken()
+  res.json({ token })
+})
+
+// ========================
+// 📋 FILA (PROTEGIDO)
+// ========================
+app.get('/api/fila', authMiddleware, async (req, res) => {
+  const atendimentos = await db.getAtendimentos()
+  const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA')
+  res.json(fila.map(a => ({
+    id: a.id,
+    paciente_nome: decrypt(a.paciente_nome),
+    criado_em: a.criado_em
+  })))
+})
+
+// ========================
+// 📋 TODOS ATENDIMENTOS (PROTEGIDO)
+// ========================
+app.get('/api/atendimentos', authMiddleware, async (req, res) => {
+  const atendimentos = await db.getAtendimentos()
+  res.json(atendimentos.map(a => ({
+    id: a.id,
+    paciente_nome: decrypt(a.paciente_nome),
+    elegivel: a.elegivel,
+    status: a.status,
+    pagamento: a.pagamento,
+    criado_em: a.criado_em
+  })))
+})
+
+// ========================
+// 🔍 DETALHES DO ATENDIMENTO (PROTEGIDO)
+// ========================
+app.get('/api/atendimento/:id', authMiddleware, async (req, res) => {
+  const at = await db.buscarAtendimentoPorId(req.params.id)
+  if (!at) {
+    return res.status(404).json({ error: 'Atendimento não encontrado' })
+  }
+  res.json({
+    ...at,
+    paciente_nome: decrypt(at.paciente_nome),
+    paciente_cpf: decrypt(at.paciente_cpf),
+    paciente_telefone: decrypt(at.paciente_telefone),
+    paciente_email: decrypt(at.paciente_email)
+  })
+})
+
+// ========================
+✅ APROVAR/RECUSAR (PROTEGIDO)
+// ========================
+app.post('/api/decisao/:id', authMiddleware, async (req, res) => {
+  const { decisao } = req.body
+  const { id } = req.params
+
+  await db.atualizarStatus(id, decisao)
+
+  const at = await db.buscarAtendimentoPorId(id)
+  if (at?.paciente_telefone) {
+    const telefone = decrypt(at.paciente_telefone)
+    const mensagem = decisao === 'APROVAR' 
+      ? `✅ Seu atendimento foi APROVADO pelo médico! Em breve você receberá sua receita.`
+      : `❌ Seu atendimento foi RECUSADO pelo médico.`
+    await enviarWhatsApp(telefone, mensagem, 'decisao')
+  }
+
+  res.json({ success: true, status: decisao })
+})
+
+// ========================
+// 📊 ESTATÍSTICAS (PROTEGIDO)
+// ========================
+app.get('/api/estatisticas', authMiddleware, async (req, res) => {
+  const atendimentos = await db.getAtendimentos()
+  const stats = {
+    total: atendimentos.length,
+    elegiveis: atendimentos.filter(a => a.elegivel).length,
+    pagos: atendimentos.filter(a => a.pagamento).length,
+    naFila: atendimentos.filter(a => a.pagamento && a.status === 'FILA').length,
+    aprovados: atendimentos.filter(a => a.status === 'APROVADO').length,
+    recusados: atendimentos.filter(a => a.status === 'RECUSADO').length
+  }
+  res.json(stats)
 })
 
 // ========================
@@ -141,334 +355,25 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    mensagem: 'Doctor Prescreve API está funcionando!',
-    versao: '2.0.0',
+    versao: '3.0.0',
     endpoints: [
-      '/estatisticas',
-      '/dashboard', 
-      '/fila',
-      '/api/webhook/triagem',
-      '/atendimentos',
-      '/memed-token'
+      'POST /api/webhook/triagem',
+      'GET /api/payment/:id',
+      'POST /login',
+      'GET /api/atendimentos (JWT)',
+      'GET /api/estatisticas (JWT)',
+      'POST /api/decisao/:id (JWT)',
+      'GET /api/fila (JWT)',
+      'POST /webhook/stripe'
     ]
   })
 })
 
 // ========================
-// 📊 DASHBOARD
+// 🩺 HEALTH CHECK
 // ========================
-app.get('/dashboard', async (req, res) => {
-  try {
-    const atendimentos = await db.getAtendimentos()
-    
-    const stats = {
-      total: atendimentos.length,
-      elegiveis: atendimentos.filter(a => a.elegivel).length,
-      pagos: atendimentos.filter(a => a.pagamento).length,
-      fila: atendimentos.filter(a => a.pagamento && a.status === 'FILA').length,
-      inelegiveis: atendimentos.filter(a => !a.elegivel).length,
-      ultimosAtendimentos: atendimentos.slice(0, 10).map(a => ({
-        id: a.id,
-        status: a.status,
-        elegivel: a.elegivel,
-        pagamento: a.pagamento,
-        criadoEm: a.criado_em
-      }))
-    }
-    
-    res.json(stats)
-  } catch (error) {
-    console.error('Erro no dashboard:', error)
-    res.status(500).json({ error: 'Erro interno no servidor' })
-  }
-})
-
-// ========================
-// 🔐 MEMED TOKEN
-// ========================
-app.get('/memed-token', async (req, res) => {
-  try {
-    const token = await memed.gerarTokenPrescritor()
-    if (token) {
-      res.json({ success: true, token })
-    } else {
-      res.status(500).json({ success: false, error: 'Não foi possível obter token Memed' })
-    }
-  } catch (error) {
-    console.error('Erro Memed:', error)
-    res.status(500).json({ success: false, error: 'Erro ao conectar com Memed' })
-  }
-})
-
-// ========================
-// 💳 PAGAMENTO
-// ========================
-app.get('/api/create-payment/:id', async (req, res) => {
-  try {
-    // Verificar se atendimento existe
-    const atendimento = await db.buscarAtendimentoPorId(req.params.id)
-    if (!atendimento) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
-    }
-    
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      metadata: { atendimentoId: req.params.id },
-      line_items: [{
-        price_data: {
-          currency: process.env.CURRENCY || 'brl',
-          product_data: { 
-            name: process.env.PRODUCT_NAME || 'Consulta Assíncrona',
-            description: 'Consulta médica online com prescrição digital'
-          },
-          unit_amount: parseInt(process.env.PRODUCT_PRICE) || 6990
-        },
-        quantity: 1
-      }],
-      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/cancel`,
-      customer_email: atendimento.paciente_email || undefined
-    })
-    
-    res.json({ url: session.url })
-  } catch (err) {
-    console.error('Erro ao criar pagamento:', err)
-    res.status(500).json({ error: err.message })
-  }
-})
-
-// ========================
-// 🧠 TRIAGEM (CORE DO SISTEMA)
-// ========================
-app.post('/api/webhook/triagem', async (req, res) => {
-  if (!req.body || Object.keys(req.body).length === 0) {
-    return res.status(400).json({ error: 'Body vazio' })
-  }
-
-  const { paciente = {}, triagem = {} } = req.body
-
-  if (!paciente.nome || !triagem.doencas) {
-    return res.status(400).json({ error: 'Dados incompletos: paciente.nome e triagem.doencas são obrigatórios' })
-  }
-
-  const id = req.body?.id || uuidv4()
-
-  // Processamento da elegibilidade
-  let doencaTexto = ''
-  if (Array.isArray(triagem?.doencas)) {
-    doencaTexto = triagem.doencas.join(' ').toLowerCase()
-  } else {
-    doencaTexto = triagem?.doencas?.toString().toLowerCase() || ''
-  }
-
-  const doencasValidas = ['has', 'hipertensao', 'dm', 'diabetes', 'dlp', 'dislipidemia', 'hipotireoidismo']
-  const doencaValida = doencasValidas.some(doenca => doencaTexto.includes(doenca))
-  
-  const receitaValida = triagem?.receitaValida !== false
-  const sinaisAlerta = triagem?.sinaisAlerta === true || triagem?.sinaisAlerta === 'true' || triagem?.sinaisAlerta === 'SIM'
-
-  const elegivel = doencaValida && receitaValida && !sinaisAlerta
-  
-  let motivo = null
-  if (!elegivel) {
-    if (!doencaValida) motivo = 'Doença não atendida no momento'
-    else if (!receitaValida) motivo = 'Receita médica vencida ou inválida'
-    else if (sinaisAlerta) motivo = 'Sinais de alerta identificados - Procure atendimento presencial'
-  }
-
-  const atendimento = {
-    id,
-    paciente: {
-      nome: encrypt(paciente.nome || ''),
-      cpf: encrypt(paciente.cpf || ''),
-      telefone: encrypt(paciente.telefone || ''),
-      email: encrypt(paciente.email || ''),
-      data_nascimento: paciente.data_nascimento || null
-    },
-    triagem: {
-      ...triagem,
-      doencas: doencaTexto,
-      processadoEm: new Date().toISOString()
-    },
-    elegivel,
-    motivo,
-    status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
-    pagamento: false,
-    criadoEm: new Date().toISOString()
-  }
-
-  await db.salvarAtendimento(atendimento)
-
-  console.log(`📋 Novo atendimento: ${id} - Elegível: ${elegivel}`)
-
-  // Enviar WhatsApp se elegível
-  if (elegivel && paciente.telefone && validarTelefone(paciente.telefone)) {
-    const mensagemWhats = `🏥 *Doctor Prescreve*\n\nOlá ${paciente.nome}! ✅ Seu atendimento foi pré-aprovado.\n\n🔗 *Link para pagamento:*\n${BASE_URL}/api/create-payment/${id}\n\n💰 Valor: R$ 69,90\n\nApós o pagamento, sua receita será emitida em até 24h.`
-    await enviarWhatsApp(paciente.telefone, mensagemWhats, 'triagem')
-  }
-
-  if (elegivel) {
-    return res.json({
-      success: true,
-      elegivel: true,
-      atendimentoId: id,
-      pagamentoUrl: `${BASE_URL}/api/create-payment/${id}`,
-      mensagem: 'Atendimento elegível. Realize o pagamento para continuar.'
-    })
-  }
-
-  return res.json({
-    success: false,
-    elegivel: false,
-    motivo,
-    mensagem: `Infelizmente não podemos prosseguir. Motivo: ${motivo}`
-  })
-})
-
-// ========================
-// 💰 SUCCESS (Pós-pagamento)
-// ========================
-app.get('/success', async (req, res) => {
-  try {
-    const session = await stripe.checkout.sessions.retrieve(req.query.session_id)
-    const id = session.metadata.atendimentoId
-
-    const at = await db.buscarAtendimentoPorId(id)
-
-    if (at) {
-      await db.atualizarStatusPagamento(id, true, at.elegivel ? 'FILA' : 'INELEGIVEL')
-      
-      // Emitir receita via Memed
-      if (at.elegivel) {
-        try {
-          const receita = await memed.emitirReceita(at)
-          console.log(`📄 Receita emitida: ${receita.link}`)
-        } catch (error) {
-          console.error('Erro ao emitir receita:', error)
-        }
-      }
-      
-      // Enviar WhatsApp de confirmação
-      if (at.paciente_telefone) {
-        const telefone = decrypt(at.paciente_telefone)
-        if (validarTelefone(telefone)) {
-          const mensagemWhats = `✅ *Pagamento Confirmado!*\n\nSeu atendimento ID: ${id} entrou na fila.\nSua receita será emitida em breve e enviada por WhatsApp.`
-          await enviarWhatsApp(telefone, mensagemWhats, 'pagamento')
-        }
-      }
-    }
-
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Pagamento Confirmado - Doctor Prescreve</title>
-          <meta charset="UTF-8">
-          <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
-            .container { background: white; border-radius: 10px; padding: 40px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            h1 { color: #28a745; }
-            button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 20px; }
-            button:hover { background: #0056b3; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>✅ Pagamento Confirmado!</h1>
-            <p>Seu pagamento foi processado com sucesso.</p>
-            <p>Sua receita será emitida em breve.</p>
-            <button onclick="window.location.href='/dashboard'">Ver Dashboard</button>
-          </div>
-        </body>
-      </html>
-    `)
-  } catch (error) {
-    console.error('Erro no success:', error)
-    res.send('<h1>❌ Erro no Pagamento</h1><p>Ocorreu um erro ao processar seu pagamento. Entre em contato com o suporte.</p>')
-  }
-})
-
-// ========================
-// 📋 FILA
-// ========================
-app.get('/fila', async (req, res) => {
-  try {
-    const atendimentos = await db.getAtendimentos()
-    const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA')
-    res.json({
-      total: fila.length,
-      atendimentos: fila.map(a => ({
-        id: a.id,
-        criadoEm: a.criado_em,
-        paciente_nome: decrypt(a.paciente_nome)
-      }))
-    })
-  } catch (error) {
-    console.error('Erro na fila:', error)
-    res.status(500).json({ error: 'Erro ao buscar fila' })
-  }
-})
-
-// ========================
-// 📋 TODOS ATENDIMENTOS
-// ========================
-app.get('/atendimentos', async (req, res) => {
-  try {
-    const atendimentos = await db.getAtendimentos()
-    res.json(atendimentos.map(a => ({
-      id: a.id,
-      elegivel: a.elegivel,
-      status: a.status,
-      pagamento: a.pagamento,
-      criadoEm: a.criado_em,
-      motivo: a.motivo
-    })))
-  } catch (error) {
-    console.error('Erro ao buscar atendimentos:', error)
-    res.status(500).json({ error: 'Erro ao buscar atendimentos' })
-  }
-})
-
-// ========================
-// 👨‍⚕️ BUSCAR ATENDIMENTO POR ID
-// ========================
-app.get('/atendimento/:id', async (req, res) => {
-  try {
-    const at = await db.buscarAtendimentoPorId(req.params.id)
-    
-    if (!at) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
-    }
-    
-    const atendimentoDecrypt = {
-      ...at,
-      paciente: {
-        nome: decrypt(at.paciente_nome),
-        cpf: decrypt(at.paciente_cpf),
-        telefone: decrypt(at.paciente_telefone),
-        email: decrypt(at.paciente_email)
-      }
-    }
-    
-    res.json(atendimentoDecrypt)
-  } catch (error) {
-    console.error('Erro ao buscar atendimento:', error)
-    res.status(500).json({ error: 'Erro ao buscar atendimento' })
-  }
-})
-
-// ========================
-// 📊 ESTATÍSTICAS
-// ========================
-app.get('/estatisticas', async (req, res) => {
-  try {
-    const stats = await db.getEstatisticas()
-    res.json(stats)
-  } catch (error) {
-    console.error('Erro nas estatísticas:', error)
-    res.status(500).json({ error: 'Erro ao buscar estatísticas' })
-  }
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 // ========================
@@ -478,45 +383,29 @@ app.get('/cancel', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html>
-      <head>
-        <title>Pagamento Cancelado - Doctor Prescreve</title>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
-          .container { background: white; border-radius: 10px; padding: 40px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-          h1 { color: #dc3545; }
-          button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 20px; }
-          button:hover { background: #0056b3; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>❌ Pagamento Cancelado</h1>
-          <p>Você cancelou o pagamento. Nenhum valor foi cobrado.</p>
-          <p>Você pode tentar novamente quando quiser.</p>
-          <button onclick="window.history.back()">Voltar</button>
-        </div>
+      <head><title>Pagamento Cancelado</title></head>
+      <body style="font-family: Arial; text-align: center; padding: 50px;">
+        <h1>❌ Pagamento Cancelado</h1>
+        <p>Nenhum valor foi cobrado. Você pode tentar novamente.</p>
       </body>
     </html>
   `)
 })
 
 // ========================
-// 🏥 HEALTH CHECK (Para Railway)
+// ✅ SUCCESS (REDIRECIONAMENTO)
 // ========================
-app.get('/healthz', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  })
-})
-
-// ========================
-// 🔄 ROTA 404
-// ========================
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Rota não encontrada' })
+app.get('/success', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head><title>Pagamento Confirmado</title></head>
+      <body style="font-family: Arial; text-align: center; padding: 50px;">
+        <h1>✅ Pagamento Confirmado!</h1>
+        <p>Seu atendimento foi registrado. Em breve sua receita será emitida.</p>
+      </body>
+    </html>
+  `)
 })
 
 // ========================
@@ -524,13 +413,12 @@ app.use('*', (req, res) => {
 // ========================
 app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(50))
-  console.log(`🚀 Doctor Prescreve API - Rodando na porta ${PORT}`)
-  console.log(`🌍 URL Pública: ${BASE_URL}`)
-  console.log(`🔐 Criptografia: ATIVA (LGPD)`)
-  console.log(`📱 WhatsApp: ${ULTRAMSG_INSTANCE ? 'CONFIGURADO ✅' : 'NÃO CONFIGURADO ⚠️'}`)
-  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'CONFIGURADO ✅' : 'NÃO CONFIGURADO ⚠️'}`)
-  console.log(`🗄️ Banco: PostgreSQL (Railway)`)
-  console.log(`📋 Health Check: ${BASE_URL}/healthz`)
+  console.log(`🚀 Servidor rodando na porta ${PORT}`)
+  console.log(`🔐 JWT Auth: ativo`)
+  console.log(`🔒 Criptografia: AES-256-CBC ativa`)
+  console.log(`📱 WhatsApp: ${process.env.ULTRAMSG_INSTANCE ? '✅' : '❌'}`)
+  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? '✅' : '❌'}`)
+  console.log(`🏥 Health: /healthz`)
   console.log('='.repeat(50))
 })
 
