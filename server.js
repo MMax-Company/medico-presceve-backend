@@ -7,12 +7,7 @@ const crypto = require('crypto')
 const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const jwt = require('jsonwebtoken')
-
-// Stripe
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
-
-const db = require('./db')
-const memed = require('./memed')
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy')
 
 const app = express()
 const PORT = process.env.PORT || 3002
@@ -23,49 +18,128 @@ const BASE_URL = process.env.BASE_URL
 // ========================
 // 🔐 VALIDAÇÃO
 // ========================
-;['ENCRYPTION_KEY','JWT_SECRET','STRIPE_SECRET_KEY'].forEach(v=>{
-  if(!process.env[v]){console.error(`❌ ${v} não definida`);process.exit(1)}
+;['ENCRYPTION_KEY', 'JWT_SECRET', 'STRIPE_SECRET_KEY'].forEach(v => {
+  if (!process.env[v]) {
+    console.error(`❌ ERRO: ${v} não definida em .env`)
+    process.exit(1)
+  }
 })
 
 // ========================
-// 🔐 CRIPTOGRAFIA
+// 🔐 CRIPTOGRAFIA (CORRIGIDO)
 // ========================
-const key = Buffer.from(process.env.ENCRYPTION_KEY)
-if(key.length!==32){console.warn('⚠️ ENCRYPTION_KEY com tamanho incorreto, mas continuando...')}
+const encryptionKeyHex = process.env.ENCRYPTION_KEY
 
-function encrypt(text){
-  if(!text) return null
-  const iv=crypto.randomBytes(16)
-  const cipher=crypto.createCipheriv('aes-256-cbc',key,iv)
-  return iv.toString('hex')+':'+cipher.update(text,'utf8','hex')+cipher.final('hex')
+// Valida se é hexadecimal com 64 caracteres
+if (!/^[a-f0-9]{64}$/i.test(encryptionKeyHex)) {
+  console.error('❌ ERRO: ENCRYPTION_KEY deve ser 64 caracteres hexadecimais')
+  console.error('   Execute: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"')
+  process.exit(1)
 }
 
-function decrypt(text){
-  if(!text) return null
-  try{
-    const [ivHex,data]=text.split(':')
-    const decipher=crypto.createDecipheriv('aes-256-cbc',key,Buffer.from(ivHex,'hex'))
-    return decipher.update(data,'hex','utf8')+decipher.final('utf8')
-  }catch(e){return "[Erro ao descriptografar]"}
+const key = Buffer.from(encryptionKeyHex, 'hex')
+console.log('✅ ENCRYPTION_KEY válida (32 bytes = 256 bits)')
+
+function encrypt(text) {
+  if (!text) return null
+  try {
+    const iv = crypto.randomBytes(16)
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
+    return iv.toString('hex') + ':' + cipher.update(text, 'utf8', 'hex') + cipher.final('hex')
+  } catch(e) {
+    console.error('❌ Erro ao criptografar:', e.message)
+    return null
+  }
+}
+
+function decrypt(text) {
+  if (!text) return null
+  try {
+    const [ivHex, data] = text.split(':')
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, Buffer.from(ivHex, 'hex'))
+    return decipher.update(data, 'hex', 'utf8') + decipher.final('utf8')
+  } catch(e) {
+    return "[Erro ao descriptografar]"
+  }
+}
+
+// ========================
+// 💾 BANCO DE DADOS (FILE-BASED)
+// ========================
+const fs = require('fs')
+const path = require('path')
+
+const DB_DIR = 'data'
+if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true })
+
+const db = {
+  async salvarAtendimento(at) {
+    const file = path.join(DB_DIR, `atendimento_${at.id}.json`)
+    fs.writeFileSync(file, JSON.stringify(at, null, 2))
+    console.log(`✅ Atendimento salvo: ${at.id}`)
+  },
+
+  async buscarAtendimentoPorId(id) {
+    const file = path.join(DB_DIR, `atendimento_${id}.json`)
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'))
+    }
+    return null
+  },
+
+  async getAtendimentos() {
+    const files = fs.readdirSync(DB_DIR).filter(f => f.startsWith('atendimento_'))
+    return files.map(f => JSON.parse(fs.readFileSync(path.join(DB_DIR, f), 'utf8')))
+  },
+
+  async atualizarStatus(id, novoStatus) {
+    const at = await this.buscarAtendimentoPorId(id)
+    if (at) {
+      at.status = novoStatus
+      at.atualizado_em = new Date().toISOString()
+      await this.salvarAtendimento(at)
+      console.log(`✅ Status atualizado: ${id} -> ${novoStatus}`)
+    }
+  },
+
+  async atualizarStatusPagamento(id, pago, status) {
+    const at = await this.buscarAtendimentoPorId(id)
+    if (at) {
+      at.pagamento = pago
+      at.status = status
+      at.pago_em = new Date().toISOString()
+      await this.salvarAtendimento(at)
+      console.log(`✅ Pagamento confirmado: ${id}`)
+    }
+  }
 }
 
 // ========================
 // 📱 WHATSAPP
 // ========================
-async function enviarWhatsApp(numero,msg){
-  if(!numero) return
-  const tel=numero.replace(/\D/g,'')
-  if(tel.length<11) return
+async function enviarWhatsApp(numero, msg) {
+  if (!numero || !process.env.ULTRAMSG_INSTANCE || !process.env.ULTRAMSG_TOKEN) return
 
-  try{
-    await axios.post(`https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
+  const tel = numero.replace(/\D/g, '')
+  if (tel.length < 11) {
+    console.warn('⚠️ Número inválido para WhatsApp:', numero)
+    return
+  }
+
+  try {
+    await axios.post(
+      `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
       new URLSearchParams({
-        token:process.env.ULTRAMSG_TOKEN,
-        to:`+55${tel}`,
-        body:msg
-      }),{timeout:10000}
+        token: process.env.ULTRAMSG_TOKEN,
+        to: `+55${tel}`,
+        body: msg
+      }),
+      { timeout: 10000 }
     )
-  }catch(e){console.error("WhatsApp erro:",e.message)}
+    console.log(`✅ WhatsApp enviado para ${tel}`)
+  } catch(e) {
+    console.error("❌ WhatsApp erro:", e.message)
+  }
 }
 
 // ========================
@@ -76,33 +150,29 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:"],
-      scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      styleSrcElem: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      workerSrc: ["'self'", "blob:"],
     },
   },
 }))
+
 app.use(cors())
 app.use(express.json())
-app.use('/api/', rateLimit({windowMs:15*60*1000,max:100}))
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
 
 // ========================
 // 🔐 AUTH
 // ========================
-const gerarToken = () => jwt.sign({role:'medico'}, process.env.JWT_SECRET, {expiresIn:'8h'})
+const gerarToken = () => jwt.sign({ role: 'medico' }, process.env.JWT_SECRET, { expiresIn: '8h' })
 
-function auth(req,res,next){
-  try{
+function auth(req, res, next) {
+  try {
     const token = req.headers.authorization?.split(' ')[1]
-    if(!token) throw new Error()
+    if (!token) throw new Error('Token ausente')
     jwt.verify(token, process.env.JWT_SECRET)
     next()
-  }catch{
-    return res.status(401).json({error:'Não autorizado'})
+  } catch(e) {
+    return res.status(401).json({ error: 'Não autorizado', detalhes: e.message })
   }
 }
 
@@ -110,402 +180,743 @@ function auth(req,res,next){
 // 🧠 TRIAGEM
 // ========================
 app.post('/api/webhook/triagem', async (req, res) => {
-  const {paciente={}, triagem={}} = req.body
-  if(!paciente.nome || !triagem.doencas) return res.status(400).json({error:'dados inválidos'})
+  try {
+    const { paciente = {}, triagem = {} } = req.body
 
-  const id = crypto.randomUUID()
-  const texto = triagem.doencas.toLowerCase()
-  const elegivel = ['has','diabetes','hipertensao','pressao'].some(d => texto.includes(d))
+    if (!paciente.nome || !triagem.doencas) {
+      return res.status(400).json({ error: 'Dados inválidos. Requeridos: paciente.nome, triagem.doencas' })
+    }
 
-  const at = {
-    id,
-    paciente_nome: encrypt(paciente.nome),
-    paciente_telefone: encrypt(paciente.telefone),
-    doencas: encrypt(texto),
-    elegivel,
-    status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
-    pagamento: false,
-    criado_em: new Date().toISOString()
+    const { v4: uuidv4 } = require('uuid')
+    const id = uuidv4()
+    const texto = triagem.doencas.toLowerCase()
+    
+    const doencasElegiveis = ['has', 'diabetes', 'hipertensão', 'pressão', 'hipotireoidismo', 'dislipidemia']
+    const elegivel = doencasElegiveis.some(d => texto.includes(d))
+
+    const atendimento = {
+      id,
+      paciente_nome: encrypt(paciente.nome),
+      paciente_telefone: encrypt(paciente.telefone || ''),
+      paciente_cpf: encrypt(paciente.cpf || ''),
+      paciente_email: encrypt(paciente.email || ''),
+      doencas: encrypt(texto),
+      elegivel,
+      status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
+      pagamento: false,
+      criado_em: new Date().toISOString()
+    }
+
+    await db.salvarAtendimento(atendimento)
+
+    if (elegivel) {
+      const url = `${BASE_URL}/api/payment/${id}`
+      const msg = `👋 Olá ${paciente.nome}!\n\n✅ Sua triagem foi aprovada!\n\n💳 Clique para pagar:\n${url}\n\n💰 R$ 69,90\n\n🔐 Consulta Assíncrona Segura`
+      await enviarWhatsApp(paciente.telefone, msg)
+    } else {
+      const msg = `❌ Infelizmente, sua condição não se qualifica para renovação remota.\nProcure atendimento presencial.`
+      await enviarWhatsApp(paciente.telefone, msg)
+    }
+
+    res.status(201).json({
+      success: true,
+      id,
+      elegivel,
+      atendimentoId: id,
+      mensagem: elegivel ? 'Elegível. Link de pagamento enviado por WhatsApp' : 'Não elegível'
+    })
+  } catch(e) {
+    console.error('❌ Erro em triagem:', e.message)
+    res.status(500).json({ error: e.message })
   }
-
-  await db.salvarAtendimento(at)
-
-  if(elegivel){
-    const url = `${BASE_URL}/api/payment/${id}`
-    await enviarWhatsApp(paciente.telefone, `Olá ${paciente.nome}! ✅ Atendimento aprovado.\n🔗 Pagamento: ${url}\n💰 R$ 69,90`)
-  }
-
-  res.json({id, elegivel, atendimentoId: id})
 })
 
 // ========================
 // 💳 PAGAMENTO
 // ========================
 app.get('/api/payment/:id', async (req, res) => {
-  try{
+  try {
     const at = await db.buscarAtendimentoPorId(req.params.id)
-    if(!at) return res.status(404).json({error:'Atendimento não encontrado'})
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      metadata: {atendimentoId: req.params.id},
+      metadata: { atendimentoId: req.params.id },
       line_items: [{
         price_data: {
           currency: 'brl',
-          product_data: {name: 'Consulta Assíncrona'},
+          product_data: {
+            name: 'Consulta Assíncrona - Doctor Prescreve',
+            description: 'Renovação de receita médica com avaliação de médico licenciado',
+            images: ['https://images.unsplash.com/photo-1576091160550-112173f7f869?w=500']
+          },
           unit_amount: 6990
         },
         quantity: 1
       }],
-      success_url: `${BASE_URL}/success`,
+      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${BASE_URL}/cancel`
     })
-    res.json({url: session.url})
-  }catch(error){
-    res.status(500).json({error:'Erro ao gerar pagamento'})
+
+    console.log(`💳 Session criada: ${session.id}`)
+    res.json({ url: session.url, sessionId: session.id })
+  } catch(e) {
+    console.error('❌ Erro Stripe:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar pagamento' })
   }
 })
 
 // ========================
 // 🔥 STRIPE WEBHOOK
 // ========================
-app.post('/webhook/stripe', express.raw({type:'application/json'}), async (req, res) => {
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature']
-  let event
 
-  try{
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
-  }catch(err){
-    return res.status(400).send(`Webhook Error: ${err.message}`)
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.warn('⚠️ STRIPE_WEBHOOK_SECRET não configurado')
+    return res.json({ received: true })
   }
 
-  if(event.type === 'checkout.session.completed'){
-    const session = event.data.object
-    const id = session.metadata.atendimentoId
+  try {
+    const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
 
-    const at = await db.buscarAtendimentoPorId(id)
-    if(at && !at.pagamento){
-      await db.atualizarStatusPagamento(id, true, 'FILA')
-      if(at.elegivel){
-        await memed.emitirReceita(at).catch(e => console.error("Memed erro:", e))
-        if(at.paciente_telefone){
-          await enviarWhatsApp(decrypt(at.paciente_telefone), `✅ Pagamento confirmado! Seu atendimento #${id} entrou na fila.`)
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object
+      const atendimentoId = session.metadata?.atendimentoId
+
+      if (atendimentoId) {
+        const at = await db.buscarAtendimentoPorId(atendimentoId)
+        if (at && !at.pagamento) {
+          await db.atualizarStatusPagamento(atendimentoId, true, 'FILA')
+
+          const telefone = decrypt(at.paciente_telefone)
+          const nome = decrypt(at.paciente_nome)
+
+          const msg = `✅ Pagamento confirmado!\n\n👨‍⚕️ Seu atendimento #${atendimentoId.substring(0, 8)} entrou na fila de avaliação.\n\n⏳ Você receberá a resposta em até 24h úteis.\n\n🔗 Acompanhe: ${BASE_URL}/painel-medico`
+          await enviarWhatsApp(telefone, msg)
+
+          console.log(`💰 Pagamento processado para ${nome}`)
         }
       }
     }
+
+    res.json({ received: true })
+  } catch(e) {
+    console.error('❌ Webhook error:', e.message)
+    res.status(400).send(`Webhook Error: ${e.message}`)
   }
-  res.json({received: true})
 })
 
 // ========================
 // 👨‍⚕️ LOGIN
 // ========================
 app.post('/login', (req, res) => {
-  if(req.body.senha !== process.env.MEDICO_PASS){
-    return res.status(401).json({error:'Senha inválida'})
+  const { senha } = req.body
+
+  if (!senha) {
+    return res.status(400).json({ error: 'Senha é obrigatória' })
   }
-  res.json({token: gerarToken()})
+
+  if (senha !== process.env.MEDICO_PASS) {
+    return res.status(401).json({ error: 'Senha inválida' })
+  }
+
+  const token = gerarToken()
+  res.json({
+    success: true,
+    token,
+    mensagem: 'Login realizado com sucesso'
+  })
 })
 
 // ========================
 // 📋 ROTAS PROTEGIDAS
 // ========================
+
 app.get('/api/atendimentos', auth, async (req, res) => {
-  const list = await db.getAtendimentos()
-  res.json(list.map(a => ({
-    ...a,
-    paciente_nome: decrypt(a.paciente_nome),
-    paciente_telefone: decrypt(a.paciente_telefone),
-    doencas: decrypt(a.doencas)
-  })))
+  try {
+    const list = await db.getAtendimentos()
+    const descriptografados = list.map(a => ({
+      ...a,
+      paciente_nome: decrypt(a.paciente_nome),
+      paciente_telefone: decrypt(a.paciente_telefone),
+      paciente_cpf: decrypt(a.paciente_cpf),
+      paciente_email: decrypt(a.paciente_email),
+      doencas: decrypt(a.doencas)
+    }))
+    res.json(descriptografados)
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 app.get('/api/fila', auth, async (req, res) => {
-  const atendimentos = await db.getAtendimentos()
-  const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA')
-  res.json({total: fila.length, atendimentos: fila.map(a => ({
-    ...a,
-    paciente_nome: decrypt(a.paciente_nome)
-  }))})
+  try {
+    const atendimentos = await db.getAtendimentos()
+    const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA')
+    res.json({
+      total: fila.length,
+      atendimentos: fila.map(a => ({
+        ...a,
+        paciente_nome: decrypt(a.paciente_nome),
+        paciente_telefone: decrypt(a.paciente_telefone),
+        doencas: decrypt(a.doencas)
+      }))
+    })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 app.get('/api/estatisticas', auth, async (req, res) => {
-  const a = await db.getAtendimentos()
-  res.json({
-    total: a.length,
-    elegiveis: a.filter(x => x.elegivel).length,
-    pagos: a.filter(x => x.pagamento).length,
-    naFila: a.filter(x => x.pagamento && x.status === 'FILA').length
-  })
+  try {
+    const a = await db.getAtendimentos()
+    res.json({
+      total: a.length,
+      elegiveis: a.filter(x => x.elegivel).length,
+      pagos: a.filter(x => x.pagamento).length,
+      naFila: a.filter(x => x.pagamento && x.status === 'FILA').length,
+      aprovados: a.filter(x => x.status === 'APROVADO').length,
+      recusados: a.filter(x => x.status === 'RECUSADO').length
+    })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 app.post('/api/decisao/:id', auth, async (req, res) => {
-  const novoStatus = req.body.decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
-  await db.atualizarStatus(req.params.id, novoStatus)
-  res.json({ok: true})
+  try {
+    const { decisao } = req.body
+    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    
+    await db.atualizarStatus(req.params.id, novoStatus)
+
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+
+    if (decisao === 'APROVAR') {
+      const msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Você pode buscar a receita digital no seu perfil.\n\n💊 A receita é válida por 30 dias.`
+      await enviarWhatsApp(telefone, msg)
+    } else {
+      const msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Procure um atendimento presencial para renovar sua receita.`
+      await enviarWhatsApp(telefone, msg)
+    }
+
+    res.json({ success: true, novoStatus })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 app.get('/api/atendimento/:id', auth, async (req, res) => {
-  const at = await db.buscarAtendimentoPorId(req.params.id)
-  if(!at) return res.status(404).json({error:'Atendimento não encontrado'})
-  res.json({
-    ...at,
-    paciente_nome: decrypt(at.paciente_nome),
-    paciente_telefone: decrypt(at.paciente_telefone),
-    doencas: decrypt(at.doencas)
-  })
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    res.json({
+      ...at,
+      paciente_nome: decrypt(at.paciente_nome),
+      paciente_telefone: decrypt(at.paciente_telefone),
+      paciente_cpf: decrypt(at.paciente_cpf),
+      paciente_email: decrypt(at.paciente_email),
+      doencas: decrypt(at.doencas)
+    })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // ========================
-// 🏥 PAINEL MÉDICO (HTML COMPLETO)
+// 🏥 PAINEL MÉDICO
 // ========================
 app.get('/painel-medico', (req, res) => {
   res.send(`<!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-    <title>Painel Médico - Doctor Prescreve</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Médico - Doctor Prescreve</title>
     <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;min-height:100vh}
-        .container{max-width:1400px;margin:0 auto;padding:20px}
-        .login-container{display:flex;justify-content:center;align-items:center;min-height:100vh;background:linear-gradient(135deg,#1a6b8a 0%,#0d4f6b 100%)}
-        .login-card{background:white;border-radius:16px;padding:40px;width:100%;max-width:400px}
-        .login-card h2{color:#1a6b8a;margin-bottom:24px;text-align:center}
-        .login-card input{width:100%;padding:12px 16px;margin-bottom:20px;border:1px solid #ddd;border-radius:8px;font-size:16px}
-        .login-card button{width:100%;padding:12px;background:#1a6b8a;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px}
-        .painel-header{background:linear-gradient(135deg,#1a6b8a 0%,#0d4f6b 100%);color:white;padding:20px;border-radius:16px;margin-bottom:30px;display:flex;justify-content:space-between;align-items:center}
-        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:30px}
-        .stat-card{background:white;border-radius:16px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
-        .stat-number{font-size:36px;font-weight:bold;color:#1a6b8a}
-        .filtros{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
-        .filtro-btn{background:#e9ecef;border:none;padding:10px 24px;border-radius:30px;cursor:pointer}
-        .filtro-btn.ativo{background:#1a6b8a;color:white}
-        .table-container{background:white;border-radius:16px;overflow-x:auto}
-        table{width:100%;border-collapse:collapse}
-        th,td{padding:16px;text-align:left;border-bottom:1px solid #e9ecef}
-        th{background:#f8f9fa;font-weight:600}
-        .status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
-        .status-aprovado{background:#d4edda;color:#155724}
-        .status-recusado{background:#f8d7da;color:#721c24}
-        .status-fila{background:#fff3cd;color:#856404}
-        .btn{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;margin:2px}
-        .btn-primary{background:#28a745;color:white}
-        .btn-danger{background:#dc3545;color:white}
-        .btn-info{background:#17a2b8;color:white}
-        .logout-btn{background:rgba(255,255,255,0.2);border:none;padding:8px 20px;border-radius:8px;color:white;cursor:pointer}
-        .error-message{color:#dc3545;margin-top:10px;text-align:center}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; }
+        
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a6b8a 0%, #0d4f6b 100%);
+        }
+        
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        
+        .login-card h2 {
+            color: #1a6b8a;
+            margin-bottom: 24px;
+            text-align: center;
+            font-size: 24px;
+        }
+        
+        .login-card input {
+            width: 100%;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        .login-card button {
+            width: 100%;
+            padding: 12px;
+            background: #1a6b8a;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .login-card button:hover { background: #0d4f6b; }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        .painel-header {
+            background: linear-gradient(135deg, #1a6b8a 0%, #0d4f6b 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .painel-header h1 { font-size: 28px; }
+        
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .logout-btn:hover { background: rgba(255, 255, 255, 0.3); }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #1a6b8a;
+        }
+        
+        .filtros {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .filtro-btn {
+            background: #e9ecef;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .filtro-btn.ativo {
+            background: #1a6b8a;
+            color: white;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 16px;
+            overflow-x: auto;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 16px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-aprovado { background: #d4edda; color: #155724; }
+        .status-recusado { background: #f8d7da; color: #721c24; }
+        .status-fila { background: #fff3cd; color: #856404; }
+        .status-inelegivel { background: #e2e3e5; color: #383d41; }
+        
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 2px;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .btn-primary { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-info { background: #17a2b8; color: white; }
+        
+        .error-message {
+            color: #dc3545;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        #painel { display: none; }
     </style>
 </head>
 <body>
     <div id="login" class="login-container">
         <div class="login-card">
             <h2>🔐 Painel Médico</h2>
+            <p style="text-align: center; color: #666; margin-bottom: 20px;">Doctor Prescreve v4.1</p>
             <input type="password" id="senha" placeholder="Digite sua senha" onkeypress="if(event.key==='Enter') login()">
-            <button onclick="login()">Entrar</button>
-            <div id="erroMsg" class="error-message" style="display:none">Senha incorreta!</div>
+            <button onclick="login()">🔓 Entrar</button>
+            <div id="erroMsg" class="error-message" style="display: none;">❌ Senha incorreta!</div>
         </div>
     </div>
 
-    <div id="painel" style="display:none">
+    <div id="painel">
         <div class="container">
             <div class="painel-header">
                 <h1>📊 Doctor Prescreve - Painel Médico</h1>
-                <button class="logout-btn" onclick="logout()">Sair</button>
+                <button class="logout-btn" onclick="logout()">🚪 Sair</button>
             </div>
-            <div class="stats-grid" id="stats">Carregando...</div>
+
+            <div class="stats-grid" id="stats">⏳ Carregando estatísticas...</div>
+
             <div class="filtros">
                 <button class="filtro-btn ativo" onclick="filtrar('todos')">📋 Todos</button>
                 <button class="filtro-btn" onclick="filtrar('fila')">⏳ Na Fila</button>
                 <button class="filtro-btn" onclick="filtrar('aprovados')">✅ Aprovados</button>
                 <button class="filtro-btn" onclick="filtrar('recusados')">❌ Recusados</button>
             </div>
-            <div class="table-container" id="atendimentos">Carregando...</div>
+
+            <div class="table-container" id="atendimentos">⏳ Carregando atendimentos...</div>
         </div>
     </div>
 
     <script>
-        const API_URL = window.location.origin;
-        let token = '';
-        let dadosAtendimentos = [];
-        let filtroAtual = 'todos';
-        
+        const API_URL = window.location.origin
+        let token = ''
+        let dadosAtendimentos = []
+        let filtroAtual = 'todos'
+
         async function login() {
-            const senha = document.getElementById('senha').value;
+            const senha = document.getElementById('senha').value
+            if (!senha) return alert('Digite a senha!')
+
             try {
                 const res = await fetch(API_URL + '/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ senha: senha })
-                });
-                const data = await res.json();
+                    body: JSON.stringify({ senha })
+                })
+                const data = await res.json()
                 if (data.token) {
-                    token = data.token;
-                    document.getElementById('login').style.display = 'none';
-                    document.getElementById('painel').style.display = 'block';
-                    carregarDados();
+                    token = data.token
+                    document.getElementById('login').style.display = 'none'
+                    document.getElementById('painel').style.display = 'block'
+                    carregarDados()
                 } else {
-                    document.getElementById('erroMsg').style.display = 'block';
+                    document.getElementById('erroMsg').style.display = 'block'
                 }
             } catch(e) {
-                alert('Erro ao fazer login');
+                alert('Erro ao fazer login: ' + e.message)
             }
         }
-        
+
         function logout() {
-            token = '';
-            document.getElementById('login').style.display = 'flex';
-            document.getElementById('painel').style.display = 'none';
+            token = ''
+            document.getElementById('login').style.display = 'flex'
+            document.getElementById('painel').style.display = 'none'
+            document.getElementById('senha').value = ''
         }
-        
+
         async function carregarDados() {
-            await carregarEstatisticas();
-            await carregarAtendimentos();
+            await carregarEstatisticas()
+            await carregarAtendimentos()
         }
-        
+
         async function carregarEstatisticas() {
             try {
                 const res = await fetch(API_URL + '/api/estatisticas', {
                     headers: { 'Authorization': 'Bearer ' + token }
-                });
-                const stats = await res.json();
-                document.getElementById('stats').innerHTML = 
+                })
+                const stats = await res.json()
+                document.getElementById('stats').innerHTML =
                     '<div class="stat-card"><div class="stat-number">' + (stats.total || 0) + '</div><div>📋 Total</div></div>' +
                     '<div class="stat-card"><div class="stat-number">' + (stats.elegiveis || 0) + '</div><div>✅ Elegíveis</div></div>' +
                     '<div class="stat-card"><div class="stat-number">' + (stats.pagos || 0) + '</div><div>💰 Pagos</div></div>' +
-                    '<div class="stat-card"><div class="stat-number">' + (stats.naFila || 0) + '</div><div>⏳ Na Fila</div></div>';
+                    '<div class="stat-card"><div class="stat-number">' + (stats.naFila || 0) + '</div><div>⏳ Na Fila</div></div>' +
+                    '<div class="stat-card"><div class="stat-number">' + (stats.aprovados || 0) + '</div><div>✅ Aprovados</div></div>' +
+                    '<div class="stat-card"><div class="stat-number">' + (stats.recusados || 0) + '</div><div>❌ Recusados</div></div>'
             } catch(e) {
-                console.error('Erro ao carregar estatísticas:', e);
+                console.error('Erro ao carregar estatísticas:', e)
             }
         }
-        
+
         async function carregarAtendimentos() {
             try {
                 const res = await fetch(API_URL + '/api/atendimentos', {
                     headers: { 'Authorization': 'Bearer ' + token }
-                });
-                dadosAtendimentos = await res.json();
-                renderizarAtendimentos();
+                })
+                dadosAtendimentos = await res.json()
+                renderizarAtendimentos()
             } catch(e) {
-                console.error('Erro ao carregar atendimentos:', e);
-                document.getElementById('atendimentos').innerHTML = '<div style="text-align:center;padding:40px;">Erro ao carregar atendimentos</div>';
+                console.error('Erro ao carregar atendimentos:', e)
+                document.getElementById('atendimentos').innerHTML = '<div style="text-align: center; padding: 40px;">❌ Erro ao carregar</div>'
             }
         }
-        
+
         function filtrar(tipo) {
-            filtroAtual = tipo;
-            document.querySelectorAll('.filtro-btn').forEach(btn => btn.classList.remove('ativo'));
-            event.target.classList.add('ativo');
-            renderizarAtendimentos();
+            filtroAtual = tipo
+            document.querySelectorAll('.filtro-btn').forEach(btn => btn.classList.remove('ativo'))
+            event.target.classList.add('ativo')
+            renderizarAtendimentos()
         }
-        
+
         function renderizarAtendimentos() {
-            let filtrados = [...dadosAtendimentos];
+            let filtrados = [...dadosAtendimentos]
             if (filtroAtual === 'fila') {
-                filtrados = filtrados.filter(a => a.pagamento && a.status === 'FILA');
+                filtrados = filtrados.filter(a => a.pagamento && a.status === 'FILA')
             } else if (filtroAtual === 'aprovados') {
-                filtrados = filtrados.filter(a => a.status === 'APROVADO');
+                filtrados = filtrados.filter(a => a.status === 'APROVADO')
             } else if (filtroAtual === 'recusados') {
-                filtrados = filtrados.filter(a => a.status === 'RECUSADO');
+                filtrados = filtrados.filter(a => a.status === 'RECUSADO')
             }
-            
+
             if (filtrados.length === 0) {
-                document.getElementById('atendimentos').innerHTML = '<div style="text-align:center;padding:40px;">Nenhum atendimento encontrado.</div>';
-                return;
+                document.getElementById('atendimentos').innerHTML = '<div style="text-align: center; padding: 40px;">Nenhum atendimento encontrado</div>'
+                return
             }
-            
-            let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>';
+
+            let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>'
             for (const a of filtrados) {
-                let statusClass = '';
-                if (a.status === 'APROVADO') statusClass = 'status-aprovado';
-                else if (a.status === 'RECUSADO') statusClass = 'status-recusado';
-                else if (a.status === 'FILA') statusClass = 'status-fila';
-                else statusClass = 'status-fila';
-                
+                let statusClass = ''
+                if (a.status === 'APROVADO') statusClass = 'status-aprovado'
+                else if (a.status === 'RECUSADO') statusClass = 'status-recusado'
+                else if (a.status === 'FILA') statusClass = 'status-fila'
+                else if (a.status === 'INELEGIVEL') statusClass = 'status-inelegivel'
+
                 html += '<tr>' +
-                    '<td><code>' + a.id.substring(0, 8) + '</code></td>' +
+                    '<td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">' + a.id.substring(0, 8) + '</code></td>' +
                     '<td><strong>' + (a.paciente_nome || 'N/A') + '</strong></td>' +
                     '<td>' + (a.doencas || 'N/A') + '</td>' +
                     '<td><span class="status-badge ' + statusClass + '">' + (a.status || 'PENDENTE') + '</span></td>' +
                     '<td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
-                    '<td><button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">Ver</button>' +
-                    (a.status === 'FILA' ? '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">Aprovar</button><button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">Recusar</button>' : '') +
-                    '</td></tr>';
+                    '<td><button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">📋 Ver</button>'
+                if (a.status === 'FILA') {
+                    html += '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">✅ Aprovar</button>' +
+                            '<button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">❌ Recusar</button>'
+                }
+                html += '</td></tr>'
             }
-            html += '</tbody></table>';
-            document.getElementById('atendimentos').innerHTML = html;
+            html += '</tbody></table>'
+            document.getElementById('atendimentos').innerHTML = html
         }
-        
+
         async function verDetalhes(id) {
             try {
                 const res = await fetch(API_URL + '/api/atendimento/' + id, {
                     headers: { 'Authorization': 'Bearer ' + token }
-                });
-                const a = await res.json();
-                alert('📋 DETALHES\\n\\nNome: ' + (a.paciente_nome || 'N/A') + '\\nCPF: ' + (a.paciente_cpf || 'N/A') + '\\nTelefone: ' + (a.paciente_telefone || 'N/A') + '\\nDoença: ' + (a.doencas || 'N/A') + '\\nStatus: ' + (a.status || 'PENDENTE'));
+                })
+                const a = await res.json()
+                const detalhes = 
+                    '📋 DETALHES DO ATENDIMENTO\\n\\n' +
+                    '👤 Paciente: ' + (a.paciente_nome || 'N/A') + '\\n' +
+                    '📱 Telefone: ' + (a.paciente_telefone || 'N/A') + '\\n' +
+                    '🆔 CPF: ' + (a.paciente_cpf || 'N/A') + '\\n' +
+                    '📧 Email: ' + (a.paciente_email || 'N/A') + '\\n' +
+                    '🏥 Doença: ' + (a.doencas || 'N/A') + '\\n' +
+                    '📊 Status: ' + (a.status || 'PENDENTE') + '\\n' +
+                    '💳 Pagamento: ' + (a.pagamento ? 'Pago' : 'Pendente')
+                alert(detalhes)
             } catch(e) {
-                alert('Erro ao carregar detalhes');
+                alert('Erro ao carregar detalhes')
             }
         }
-        
+
         async function aprovar(id) {
-            if (!confirm('Aprovar este paciente?')) return;
+            if (!confirm('Aprovar este paciente?')) return
             try {
-                await fetch(API_URL + '/api/decisao/' + id, {
+                const res = await fetch(API_URL + '/api/decisao/' + id, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
                     body: JSON.stringify({ decisao: 'APROVAR' })
-                });
-                alert('✅ Paciente aprovado!');
-                carregarDados();
+                })
+                const data = await res.json()
+                if (data.success) {
+                    alert('✅ Paciente aprovado!')
+                    carregarDados()
+                }
             } catch(e) {
-                alert('Erro ao aprovar');
+                alert('Erro ao aprovar')
             }
         }
-        
+
         async function recusar(id) {
-            if (!confirm('Recusar este paciente?')) return;
+            if (!confirm('Recusar este paciente?')) return
             try {
-                await fetch(API_URL + '/api/decisao/' + id, {
+                const res = await fetch(API_URL + '/api/decisao/' + id, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
                     body: JSON.stringify({ decisao: 'RECUSAR' })
-                });
-                alert('❌ Paciente recusado');
-                carregarDados();
+                })
+                const data = await res.json()
+                if (data.success) {
+                    alert('❌ Paciente recusado')
+                    carregarDados()
+                }
             } catch(e) {
-                alert('Erro ao recusar');
+                alert('Erro ao recusar')
             }
         }
-        
+
         setInterval(() => {
-            if (document.getElementById('painel').style.display !== 'none') carregarDados();
-        }, 30000);
+            if (document.getElementById('painel').style.display !== 'none') {
+                carregarDados()
+            }
+        }, 30000)
     </script>
 </body>
-</html>`);
-});
+</html>`)
+})
 
 // ========================
-// 🩺 HEALTH
+// 🏥 PUBLIC PAGES
 // ========================
-app.get('/healthz', (req, res) => res.json({status:'ok', timestamp: new Date().toISOString()}))
-app.get('/success', (req, res) => res.send('<h1>✅ Pagamento confirmado!</h1><p>Seu atendimento foi registrado.</p><a href="/painel-medico">Ir para o Painel</a>'))
-app.get('/cancel', (req, res) => res.send('<h1>❌ Pagamento cancelado</h1><p>Você pode tentar novamente.</p>'))
-app.get('/', (req, res) => res.json({status:'online', versao:'4.0.0', endpoints:['/api/webhook/triagem','/api/payment/:id','/login','/painel-medico']}))
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '4.1', service: 'Doctor Prescreve' })
+})
+
+app.get('/success', (req, res) => {
+  res.send(`<html><head><style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+    .box { background: white; padding: 40px; border-radius: 16px; max-width: 500px; margin: 0 auto; }
+    h1 { color: #28a745; }
+    a { background: #1a6b8a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; }
+  </style></head><body>
+  <div class="box">
+    <h1>✅ Pagamento Confirmado!</h1>
+    <p>Seu atendimento foi registrado com sucesso.</p>
+    <p>Você receberá uma resposta em até 24 horas úteis.</p>
+    <a href="/painel-medico">📊 Voltar</a>
+  </div>
+  </body></html>`)
+})
+
+app.get('/cancel', (req, res) => {
+  res.send(`<html><head><style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+    .box { background: white; padding: 40px; border-radius: 16px; max-width: 500px; margin: 0 auto; }
+    h1 { color: #dc3545; }
+    a { background: #1a6b8a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; }
+  </style></head><body>
+  <div class="box">
+    <h1>❌ Pagamento Cancelado</h1>
+    <p>Você pode tentar novamente quando estiver pronto.</p>
+    <a href="/">🏠 Voltar</a>
+  </div>
+  </body></html>`)
+})
+
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    versao: '4.1.0',
+    servico: 'Doctor Prescreve Backend',
+    endpoints: [
+      'POST /api/webhook/triagem',
+      'GET /api/payment/:id',
+      'POST /webhook/stripe',
+      'POST /login',
+      'GET /painel-medico',
+      'GET /healthz'
+    ],
+    documentacao: 'https://github.com/Marketing-cvl/doctor-prescreve-backend'
+  })
+})
 
 // ========================
 // 🚀 INICIA SERVIDOR
 // ========================
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('='.repeat(50))
-  console.log(`🚀 Servidor rodando na porta ${PORT}`)
+  console.log('\n' + '='.repeat(60))
+  console.log('🚀 Doctor Prescreve Backend v4.1.0')
+  console.log('='.repeat(60))
+  console.log(`📡 Porta: ${PORT}`)
   console.log(`🌍 URL: ${BASE_URL}`)
-  console.log(`🔐 JWT Auth: ativo`)
+  console.log(`✅ ENCRYPTION_KEY: Válida (256-bit AES)`)
+  console.log(`🔐 JWT Auth: Ativo`)
   console.log(`🔒 Criptografia: AES-256-CBC ativa`)
+  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Conectado' : '⚠️ Não configurado'}`)
+  console.log(`📱 WhatsApp: ${process.env.ULTRAMSG_INSTANCE ? 'Ativo' : '⚠️ Não configurado'}`)
   console.log(`🏥 Painel Médico: ${BASE_URL}/painel-medico`)
-  console.log('='.repeat(50))
+  console.log('='.repeat(60))
+  console.log(`✅ Servidor iniciado com sucesso!\n`)
 })
 
-module.exports = app
+module.exports = appx
