@@ -455,10 +455,11 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
 })
 
 // ========================
-// 🏥 PAINEL MÉDICO COMPLETO (COM MODAL DE RECEITA)
+// 🏥 PAINEL MÉDICO (CORRIGIDO - SEM ERROS DE SINTAXE)
 // ========================
 app.get('/painel-medico', (req, res) => {
-  res.send(`<!DOCTYPE html>
+  res.send(`
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -466,7 +467,7 @@ app.get('/painel-medico', (req, res) => {
     <title>Painel Médico - Doctor Prescreve</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; }
+        body { font-family: Arial, sans-serif; background: #f0f2f5; }
         .login-container {
             display: flex;
             justify-content: center;
@@ -537,8 +538,6 @@ app.get('/painel-medico', (req, res) => {
         .btn-aprovar { background: #28a745; color: white; }
         .btn-recusar { background: #dc3545; color: white; }
         .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid white; padding: 8px 16px; border-radius: 8px; cursor: pointer; color: white; }
-        
-        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -599,14 +598,13 @@ app.get('/painel-medico', (req, res) => {
     <div id="tabela"></div>
 </div>
 
-<!-- Modal para Receita -->
 <div id="modalReceita" class="modal">
     <div class="modal-content">
         <h3>📋 Prescrição Médica</h3>
         <div id="listaMedicamentos"></div>
         <input type="text" id="medNome" placeholder="Nome do medicamento">
-        <input type="text" id="medDosagem" placeholder="Dosagem (ex: 500mg, 1 comprimido)">
-        <input type="text" id="medDuracao" placeholder="Duração (ex: 30 dias, uso contínuo)">
+        <input type="text" id="medDosagem" placeholder="Dosagem (ex: 500mg)">
+        <input type="text" id="medDuracao" placeholder="Duração (ex: 30 dias)">
         <input type="number" id="medQuantidade" placeholder="Quantidade">
         <textarea id="medInstrucoes" rows="2" placeholder="Instruções (opcional)"></textarea>
         <button class="btn-add" onclick="adicionarMedicamento()">+ Adicionar Medicamento</button>
@@ -635,7 +633,7 @@ app.get('/painel-medico', (req, res) => {
             const res = await fetch('/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senha })
+                body: JSON.stringify({ senha: senha })
             });
             const data = await res.json();
             if (data.token) {
@@ -643,10 +641,13 @@ app.get('/painel-medico', (req, res) => {
                 loginDiv.style.display = 'none';
                 painelDiv.style.display = 'block';
                 carregarDados();
+                erroMsg.style.display = 'none';
             } else {
                 erroMsg.style.display = 'block';
             }
-        } catch(e) { alert('Erro: ' + e.message); }
+        } catch(e) {
+            alert('Erro: ' + e.message);
+        }
     }
 
     function logout() {
@@ -658,7 +659,9 @@ app.get('/painel-medico', (req, res) => {
 
     async function carregarDados() {
         try {
-            const resStats = await fetch('/api/estatisticas', { headers: { 'Authorization': 'Bearer ' + token } });
+            const resStats = await fetch('/api/estatisticas', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
             const stats = await resStats.json();
             document.getElementById('stats').innerHTML = 
                 '<div class="stat-card"><div class="stat-number">' + (stats.total || 0) + '</div><div>Total</div></div>' +
@@ -666,14 +669,18 @@ app.get('/painel-medico', (req, res) => {
                 '<div class="stat-card"><div class="stat-number">' + (stats.aprovados || 0) + '</div><div>Aprovados</div></div>' +
                 '<div class="stat-card"><div class="stat-number">' + (stats.recusados || 0) + '</div><div>Recusados</div></div>';
 
-            const resLista = await fetch('/api/atendimentos', { headers: { 'Authorization': 'Bearer ' + token } });
+            const resLista = await fetch('/api/atendimentos', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
             dados = await resLista.json();
             renderizarTabela();
-        } catch(e) { console.error(e); }
+        } catch(e) {
+            console.error(e);
+        }
     }
 
     function renderizarTabela() {
-        let html = '</table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+        let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
         for (const a of dados) {
             html += '<tr>' +
                 '<td>' + a.id.substring(0,8) + '</td>' +
@@ -681,10 +688,10 @@ app.get('/painel-medico', (req, res) => {
                 '<td>' + (a.doencas || 'N/A') + '</td>' +
                 '<td>' + (a.status || 'PENDENTE') + '</td>' +
                 '<td>' +
-                    '<button class="btn-ver" onclick="verDetalhes(\'' + a.id + '\')">Ver</button>';
+                    '<button class="btn-ver" onclick="verDetalhes(\\'' + a.id + '\\')">Ver</button>';
             if (a.status === 'FILA') {
-                html += '<button class="btn-aprovar" onclick="abrirModalReceita(\'' + a.id + '\')">Aprovar</button>' +
-                        '<button class="btn-recusar" onclick="recusar(\'' + a.id + '\')">Recusar</button>';
+                html += '<button class="btn-aprovar" onclick="abrirModalReceita(\\'' + a.id + '\\')">Aprovar</button>' +
+                        '<button class="btn-recusar" onclick="recusar(\\'' + a.id + '\\')">Recusar</button>';
             }
             html += '</td></tr>';
         }
@@ -694,13 +701,17 @@ app.get('/painel-medico', (req, res) => {
 
     async function verDetalhes(id) {
         try {
-            const res = await fetch('/api/atendimento/' + id, { headers: { 'Authorization': 'Bearer ' + token } });
+            const res = await fetch('/api/atendimento/' + id, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
             const a = await res.json();
             alert('📋 Detalhes\\n\\n👤 Paciente: ' + (a.paciente_nome || 'N/A') + 
                   '\\n📱 Telefone: ' + (a.paciente_telefone || 'N/A') +
                   '\\n🆔 CPF: ' + (a.paciente_cpf || 'N/A') +
                   '\\n🏥 Doença: ' + (a.doencas || 'N/A'));
-        } catch(e) { alert('Erro'); }
+        } catch(e) {
+            alert('Erro ao carregar detalhes');
+        }
     }
 
     function abrirModalReceita(id) {
@@ -727,7 +738,7 @@ app.get('/painel-medico', (req, res) => {
             return;
         }
 
-        medicamentosTemp.push({ nome, dosagem, duracao, quantidade, instrucoes });
+        medicamentosTemp.push({ nome: nome, dosagem: dosagem, duracao: duracao, quantidade: quantidade, instrucoes: instrucoes });
         
         const listaDiv = document.getElementById('listaMedicamentos');
         const medDiv = document.createElement('div');
@@ -736,7 +747,6 @@ app.get('/painel-medico', (req, res) => {
                            '<button onclick="removerMedicamento(this)" style="float:right; background:#dc3545; color:white; padding:2px 8px;">Remover</button>';
         listaDiv.appendChild(medDiv);
         
-        // Limpar campos
         document.getElementById('medNome').value = '';
         document.getElementById('medDosagem').value = '';
         document.getElementById('medDuracao').value = '';
@@ -765,17 +775,21 @@ app.get('/painel-medico', (req, res) => {
         if (!confirm('Confirmar aprovação com estes medicamentos?')) return;
 
         try {
-            // Primeiro aprova a consulta
             await fetch('/api/decisao/' + atendimentoIdAtual, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
                 body: JSON.stringify({ decisao: 'APROVAR' })
             });
             
-            // Depois envia a receita
             await fetch('/api/receita/' + atendimentoIdAtual, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
                 body: JSON.stringify({ medicamentos: medicamentosTemp })
             });
             
@@ -791,7 +805,10 @@ app.get('/painel-medico', (req, res) => {
         if (!confirm('Recusar este paciente?')) return;
         await fetch('/api/decisao/' + id, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
             body: JSON.stringify({ decisao: 'RECUSAR' })
         });
         carregarDados();
@@ -799,10 +816,13 @@ app.get('/painel-medico', (req, res) => {
 
     btnLogin.onclick = fazerLogin;
     btnLogout.onclick = logout;
-    senhaInput.onkeypress = (e) => { if (e.key === 'Enter') fazerLogin(); };
+    senhaInput.onkeypress = function(e) {
+        if (e.key === 'Enter') fazerLogin();
+    };
 </script>
 </body>
-</html>`)
+</html>
+  `);
 })
 
 // ========================
