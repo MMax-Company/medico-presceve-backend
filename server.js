@@ -939,9 +939,9 @@ app.post('/api/enviar-whatsapp', auth, async (req, res) => {
 })
 
 // ========================
-// 💾 SALVAR PRONTUÁRIO
+// 💾 SALVAR PRONTUÁRIO (SEM AUTENTICAÇÃO)
 // ========================
-app.post('/api/salvar-prontuario/:id', auth, async (req, res) => {
+app.post('/api/salvar-prontuario/:id', async (req, res) => {
   try {
     const { id } = req.params
     const dadosProntuario = req.body
@@ -1121,7 +1121,7 @@ app.get('/prontuario/:id', async (req, res) => {
         try {
             const res = await fetch('/api/salvar-prontuario/' + atendimentoId, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dados)
             });
 
