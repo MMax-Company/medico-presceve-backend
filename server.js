@@ -586,10 +586,16 @@ app.post('/api/webhook/triagem', async (req, res) => {
       return res.status(400).json({ error: 'Dados inválidos' })
     }
 
-    const id = uuidv4()
-    const texto = triagem.doencas.toLowerCase()
-    const doencasElegiveis = ['has', 'diabetes', 'hipertensão', 'pressão', 'hipotireoidismo', 'dislipidemia']
-    const elegivel = doencasElegiveis.some(d => texto.includes(d))
+const id = uuidv4()
+// 🔧 CORREÇÃO: trata se doencas for array ou string
+let texto = ''
+if (Array.isArray(triagem.doencas)) {
+  texto = triagem.doencas.join(' ').toLowerCase()
+} else {
+  texto = (triagem.doencas || '').toLowerCase()
+}
+const doencasElegiveis = ['has', 'diabetes', 'hipertensão', 'pressão', 'hipotireoidismo', 'dislipidemia']
+const elegivel = doencasElegiveis.some(d => texto.includes(d))
 
     const atendimento = {
       id,
