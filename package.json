@@ -1,5 +1,5 @@
 {
-  "name": "doctor-prescreve-backend",
+  "name": "medico-prescreve-backend",
   "version": "1.0.0",
   "description": "Sistema de telemedicina para renovação de receitas",
   "main": "server.js",
@@ -9,7 +9,7 @@
     "generate-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
   },
   "keywords": ["telemedicina", "stripe", "whatsapp", "express"],
-  "author": "Seu Nome",
+  "author": "Marketing-cvl",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.0",
