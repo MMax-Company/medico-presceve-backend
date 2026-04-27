@@ -15,6 +15,11 @@ const PORT = process.env.PORT || 3002
 const BASE_URL = process.env.BASE_URL 
   || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}`)
 
+// 👇 ADICIONA ISSO
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server rodando na porta ${PORT}`)
+})
+
 // ========================
 // 🔐 VALIDAÇÃO
 // ========================
@@ -887,12 +892,7 @@ async function verDetalhes(id) {
 // 🏥 PUBLIC PAGES
 // ========================
 app.get('/healthz', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    service: 'doctor-prescreve-backend'
-  })
+  res.status(200).send('ok')
 })
 
 app.get('/success', (req, res) => {
