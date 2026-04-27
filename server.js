@@ -843,7 +843,6 @@ app.get('/prontuario/:id', auth, async (req, res) => {
     
     const prontuario = at.prontuario || {}
     
-    // Atualizar status se ainda estiver na fila
     if (at.status === 'FILA') {
       await db.atualizarStatus(req.params.id, 'EM_ATENDIMENTO')
     }
@@ -890,7 +889,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
             <div class="section">
                 <div class="section-title">👤 Dados Pessoais</div>
                 <div class="form-grid">
-                    <div class="form-group"><label>NOME <span class="badge-chatbot">Chatbot</span></label><input type="text" id="nome" value="${prontuario.nome || pacienteNome}"></div>
+                    <div class="form-group"><label>NOME <span class="badge-chatbot">Chatbot</span></label><input type="text" id="nome" value="${prontuario.nome || pacienteNome.replace(/[<>]/g, '')}"></div>
                     <div class="form-group"><label>NASCIMENTO <span class="badge-chatbot">Chatbot</span></label><input type="date" id="nascimento" value="${prontuario.nascimento || pacienteNascimento}"></div>
                     <div class="form-group"><label>EMAIL <span class="badge-chatbot">Chatbot</span></label><input type="email" id="email" value="${prontuario.email || pacienteEmail}"></div>
                     <div class="form-group"><label>CPF <span class="badge-chatbot">Chatbot</span></label><input type="text" id="cpf" value="${prontuario.cpf || pacienteCpf}"></div>
@@ -901,7 +900,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
             <div class="section">
                 <div class="section-title">🏥 Condição Clínica</div>
                 <div class="form-grid">
-                    <div class="form-group full-width"><label>DOENÇAS <span class="badge-chatbot">Chatbot</span></label><input type="text" id="doencas" value="${prontuario.doencas || doencas}"></div>
+                    <div class="form-group full-width"><label>DOENÇAS <span class="badge-chatbot">Chatbot</span></label><input type="text" id="doencas" value="${prontuario.doencas || doencas.replace(/[<>]/g, '')}"></div>
                     <div class="form-group full-width"><label>MEDICAÇÃO EM USO</label><textarea id="medicacao" rows="2">${prontuario.medicacao || ''}</textarea></div>
                     <div class="form-group"><label>TEMPO DE USO</label><input type="text" id="tempoUso" value="${prontuario.tempoUso || ''}"></div>
                     <div class="form-group"><label>VALIDADE DA RECEITA</label><input type="date" id="validadeReceita" value="${prontuario.validadeReceita || ''}"></div>
@@ -970,6 +969,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
     console.error(e)
     res.status(500).send('Erro ao carregar prontuário')
   }
+})
 
 // ========================
 // 🏥 PAINEL MÉDICO (COM LOGIN BONITO)
@@ -982,92 +982,40 @@ app.get('/painel-medico', (req, res) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Médico - Doctor Prescreve</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; padding: 20px; }
-        
-        /* TELA DE LOGIN */
-        .login-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, #1a6b8a 0%, #0d4f6b 100%);
-            z-index: 1000;
-        }
-        .login-card {
-            background: white;
-            border-radius: 16px;
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        }
-        .login-card h2 {
-            color: #1a6b8a;
-            text-align: center;
-            margin-bottom: 24px;
-            font-size: 24px;
-        }
-        .login-card input {
-            width: 100%;
-            padding: 12px 16px;
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-        }
-        .login-card button {
-            width: 100%;
-            padding: 12px;
-            background: #1a6b8a;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-        }
-        .login-card button:hover { background: #0d4f6b; }
-        .error-msg {
-            color: #dc3545;
-            text-align: center;
-            margin-top: 10px;
-            display: none;
-            font-weight: 600;
-        }
-        
-        /* PAINEL PRINCIPAL */
-        .painel-container { display: none; }
-        .header { background: linear-gradient(135deg, #1a6b8a 0%, #0d4f6b 100%); color: white; padding: 20px 30px; border-radius: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid white; padding: 10px 20px; border-radius: 8px; cursor: pointer; color: white; }
-        .stats { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-        .stat-card { background: white; padding: 15px 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .stat-number { font-size: 28px; font-weight: bold; color: #1a6b8a; }
-        .columns { display: flex; gap: 20px; overflow-x: auto; min-height: 500px; }
-        .column { flex: 1; min-width: 320px; background: #f8f9fa; border-radius: 16px; padding: 15px; }
-        .column h3 { color: #1a6b8a; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #dee2e6; }
-        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s; }
-        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        .card-id { font-size: 12px; color: #6c757d; font-family: monospace; margin-bottom: 8px; }
-        .card-name { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
-        .card-time { font-size: 11px; color: #999; margin-bottom: 10px; }
-        .card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-        .btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
-        .btn-prontuario { background: #17a2b8; color: white; }
-        .btn-aprovar { background: #28a745; color: white; }
-        .btn-recusar { background: #dc3545; color: white; }
-        .btn-pegar { background: #ffc107; color: #333; }
-        .empty-state { text-align: center; padding: 40px; color: #999; }
-        @media (max-width: 900px) { .columns { flex-direction: column; } .column { min-width: auto; } }
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;padding:20px}
+        .login-container{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:center;background:linear-gradient(135deg,#1a6b8a 0%,#0d4f6b 100%);z-index:1000}
+        .login-card{background:#fff;border-radius:16px;padding:40px;width:100%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,0.2)}
+        .login-card h2{color:#1a6b8a;text-align:center;margin-bottom:24px;font-size:24px}
+        .login-card input{width:100%;padding:12px 16px;margin-bottom:20px;border:1px solid #ddd;border-radius:8px;font-size:16px}
+        .login-card button{width:100%;padding:12px;background:#1a6b8a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold}
+        .login-card button:hover{background:#0d4f6b}
+        .error-msg{color:#dc3545;text-align:center;margin-top:10px;display:none;font-weight:600}
+        .painel-container{display:none}
+        .header{background:linear-gradient(135deg,#1a6b8a 0%,#0d4f6b 100%);color:#fff;padding:20px 30px;border-radius:16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+        .logout-btn{background:rgba(255,255,255,0.2);border:1px solid #fff;padding:10px 20px;border-radius:8px;cursor:pointer;color:#fff}
+        .stats{display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap}
+        .stat-card{background:#fff;padding:15px 25px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+        .stat-number{font-size:28px;font-weight:bold;color:#1a6b8a}
+        .columns{display:flex;gap:20px;overflow-x:auto;min-height:500px}
+        .column{flex:1;min-width:320px;background:#f8f9fa;border-radius:16px;padding:15px}
+        .column h3{color:#1a6b8a;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid #dee2e6}
+        .card{background:#fff;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:all .3s}
+        .card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.15)}
+        .card-id{font-size:12px;color:#6c757d;font-family:monospace;margin-bottom:8px}
+        .card-name{font-weight:bold;font-size:16px;margin-bottom:5px}
+        .card-time{font-size:11px;color:#999;margin-bottom:10px}
+        .card-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+        .btn{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+        .btn-prontuario{background:#17a2b8;color:#fff}
+        .btn-aprovar{background:#28a745;color:#fff}
+        .btn-recusar{background:#dc3545;color:#fff}
+        .btn-pegar{background:#ffc107;color:#333}
+        .empty-state{text-align:center;padding:40px;color:#999}
+        @media(max-width:900px){.columns{flex-direction:column}.column{min-width:auto}}
     </style>
 </head>
 <body>
-
-<!-- TELA DE LOGIN BONITA -->
 <div id="loginArea" class="login-container">
     <div class="login-card">
         <h2>🔐 Painel Médico</h2>
@@ -1076,229 +1024,108 @@ app.get('/painel-medico', (req, res) => {
         <div id="erroMsg" class="error-msg">❌ Senha incorreta!</div>
     </div>
 </div>
-
-<!-- PAINEL PRINCIPAL -->
 <div id="painelArea" class="painel-container">
-    <div class="header">
-        <h1>📊 Doctor Prescreve - Painel Médico</h1>
-        <button class="logout-btn" onclick="logout()">Sair</button>
-    </div>
-    
+    <div class="header"><h1>📊 Doctor Prescreve - Painel Médico</h1><button class="logout-btn" onclick="logout()">Sair</button></div>
     <div class="stats" id="stats">Carregando...</div>
-    
     <div class="columns">
-        <div class="column">
-            <h3>⏳ FILA</h3>
-            <div id="filaColuna"><div class="empty-state">Carregando...</div></div>
-        </div>
-        <div class="column">
-            <h3>📋 EM ATENDIMENTO</h3>
-            <div id="atendimentoColuna"><div class="empty-state">Carregando...</div></div>
-        </div>
-        <div class="column">
-            <h3>✅ DECISÃO</h3>
-            <div id="decisaoColuna"><div class="empty-state">Carregando...</div></div>
-        </div>
+        <div class="column"><h3>⏳ FILA</h3><div id="filaColuna"><div class="empty-state">Carregando...</div></div></div>
+        <div class="column"><h3>📋 EM ATENDIMENTO</h3><div id="atendimentoColuna"><div class="empty-state">Carregando...</div></div></div>
+        <div class="column"><h3>✅ DECISÃO</h3><div id="decisaoColuna"><div class="empty-state">Carregando...</div></div></div>
     </div>
 </div>
-
 <script>
-    let token = localStorage.getItem('token');
-    let dadosAtendimentos = [];
-
-    async function fazerLogin() {
-        const senha = document.getElementById('senhaInput').value;
-        const erroMsg = document.getElementById('erroMsg');
-        
-        if (!senha) return;
-        
-        try {
-            const res = await fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senha })
-            });
-            const data = await res.json();
-            
-            if (data.token) {
-                token = data.token;
-                localStorage.setItem('token', token);
-                document.getElementById('loginArea').style.display = 'none';
-                document.getElementById('painelArea').style.display = 'block';
-                carregarDados();
-                erroMsg.style.display = 'none';
-            } else {
-                erroMsg.style.display = 'block';
-            }
-        } catch(e) {
-            erroMsg.style.display = 'block';
-        }
-    }
-
-    function logout() {
-        token = '';
-        localStorage.removeItem('token');
-        document.getElementById('loginArea').style.display = 'flex';
-        document.getElementById('painelArea').style.display = 'none';
-        document.getElementById('senhaInput').value = '';
-    }
-
-    async function carregarDados() {
-        if (!token) return;
-        try {
-            const res = await fetch('/api/atendimentos', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            dadosAtendimentos = await res.json();
-            
-            const statsRes = await fetch('/api/estatisticas', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const stats = await statsRes.json();
-            document.getElementById('stats').innerHTML = 
-                '<div class="stat-card"><div class="stat-number">' + (stats.total || 0) + '</div><div>Total</div></div>' +
-                '<div class="stat-card"><div class="stat-number">' + (stats.naFila || 0) + '</div><div>Na Fila</div></div>' +
-                '<div class="stat-card"><div class="stat-number">' + (stats.aprovados || 0) + '</div><div>Aprovados</div></div>' +
-                '<div class="stat-card"><div class="stat-number">' + (stats.recusados || 0) + '</div><div>Recusados</div></div>';
-            
-            renderizarColunas();
-        } catch(e) { console.error(e); }
-    }
-
-    function formatarTempo(dataCriacao) {
-        if (!dataCriacao) return 'agora';
-        const criado = new Date(dataCriacao);
-        const agora = new Date();
-        const diffMin = Math.floor((agora - criado) / 60000);
-        if (diffMin < 1) return 'agora';
-        if (diffMin < 60) return diffMin + ' min';
-        return Math.floor(diffMin / 60) + 'h';
-    }
-
-    function renderizarColunas() {
-        const fila = dadosAtendimentos.filter(a => a.status === 'FILA' && a.pagamento);
-        const emAtendimento = dadosAtendimentos.filter(a => a.status === 'EM_ATENDIMENTO');
-        const aguardandoDecisao = dadosAtendimentos.filter(a => a.status === 'PRONTO_PARA_DECISAO');
-        
-        let filaHtml = '';
-        if (fila.length === 0) {
-            filaHtml = '<div class="empty-state">📭 Nenhum paciente na fila</div>';
-        } else {
-            fila.forEach(a => {
-                filaHtml += '<div class="card">' +
-                    '<div class="card-id">ID: ' + a.id.substring(0,8) + '</div>' +
-                    '<div class="card-name">' + (a.paciente_nome || 'Paciente') + '</div>' +
-                    '<div class="card-time">⏱️ Há ' + formatarTempo(a.pago_em || a.criado_em) + '</div>' +
-                    '<div class="card-actions">' +
-                        '<button class="btn btn-prontuario" onclick="abrirProntuario(\'' + a.id + '\')">📋 Abrir Prontuário</button>' +
-                        '<button class="btn btn-pegar" onclick="pegarProximo()">🎯 Pegar Próximo</button>' +
-                    '</div></div>';
-            });
-        }
-        document.getElementById('filaColuna').innerHTML = filaHtml;
-        
-        let atendimentoHtml = '';
-        if (emAtendimento.length === 0) {
-            atendimentoHtml = '<div class="empty-state">📋 Nenhum caso em atendimento</div>';
-        } else {
-            emAtendimento.forEach(a => {
-                atendimentoHtml += '<div class="card">' +
-                    '<div class="card-id">ID: ' + a.id.substring(0,8) + '</div>' +
-                    '<div class="card-name">' + (a.paciente_nome || 'Paciente') + '</div>' +
-                    '<div class="card-time">🔒 Em análise</div>' +
-                    '<div class="card-actions">' +
-                        '<button class="btn btn-prontuario" onclick="abrirProntuario(\'' + a.id + '\')">✏️ Continuar</button>' +
-                    '</div></div>';
-            });
-        }
-        document.getElementById('atendimentoColuna').innerHTML = atendimentoHtml;
-        
-        let decisaoHtml = '';
-        if (aguardandoDecisao.length === 0) {
-            decisaoHtml = '<div class="empty-state">⚖️ Aguardando prontuários</div>';
-        } else {
-            aguardandoDecisao.forEach(a => {
-                decisaoHtml += '<div class="card">' +
-                    '<div class="card-id">ID: ' + a.id.substring(0,8) + '</div>' +
-                    '<div class="card-name">' + (a.paciente_nome || 'Paciente') + '</div>' +
-                    '<div class="card-time">📋 Prontuário preenchido</div>' +
-                    '<div class="card-actions">' +
-                        '<button class="btn btn-aprovar" onclick="aprovarConsulta(\'' + a.id + '\')">✅ Aprovar</button>' +
-                        '<button class="btn btn-recusar" onclick="recusarConsulta(\'' + a.id + '\')">❌ Recusar</button>' +
-                        '<button class="btn btn-prontuario" onclick="abrirProntuario(\'' + a.id + '\')">📋 Ver Prontuário</button>' +
-                    '</div></div>';
-            });
-        }
-        document.getElementById('decisaoColuna').innerHTML = decisaoHtml;
-    }
-
-    async function pegarProximo() {
-        try {
-            const res = await fetch('/api/fila/pegar-proximo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ medicoId: 'medico_' + Date.now() })
-            });
-            const data = await res.json();
-            if (data.sucesso) {
-                window.location.href = '/prontuario/' + data.atendimento.id;
-            } else {
-                alert('Fila vazia ou caso já em atendimento: ' + (data.motivo || ''));
-                carregarDados();
-            }
-        } catch(e) { alert('Erro: ' + e.message); }
-    }
-
-    function abrirProntuario(id) {
-        window.location.href = '/prontuario/' + id;
-    }
-
-    async function aprovarConsulta(id) {
-        const orientacoes = prompt('Orientação médica (opcional):');
-        if (!confirm('Confirmar aprovação? O paciente receberá a receita.')) return;
-        try {
-            const res = await fetch('/api/decisao/' + id, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ decisao: 'APROVAR', orientacoes: orientacoes || '' })
-            });
-            if (res.ok) {
-                alert('✅ Consulta aprovada! Paciente receberá a receita.');
-                carregarDados();
-            } else { alert('❌ Erro ao aprovar'); }
-        } catch(e) { alert('Erro: ' + e.message); }
-    }
-
-    async function recusarConsulta(id) {
-        const motivo = prompt('Motivo da recusa (opcional):');
-        if (!confirm('Confirmar recusa? Paciente será notificado.')) return;
-        try {
-            const res = await fetch('/api/decisao/' + id, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ decisao: 'RECUSAR', orientacoes: motivo || '' })
-            });
-            if (res.ok) {
-                alert('❌ Consulta recusada!');
-                carregarDados();
-            } else { alert('❌ Erro ao recusar'); }
-        } catch(e) { alert('Erro: ' + e.message); }
-    }
-
-    // Verificar se já está logado
-    if (token) {
-        document.getElementById('loginArea').style.display = 'none';
-        document.getElementById('painelArea').style.display = 'block';
-        carregarDados();
-    }
-
-    setInterval(() => { if (token) carregarDados(); }, 30000);
+let token=localStorage.getItem('token');
+let dadosAtendimentos=[];
+async function fazerLogin(){
+const senha=document.getElementById('senhaInput').value;
+const erroMsg=document.getElementById('erroMsg');
+if(!senha)return;
+try{
+const res=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senha})});
+const data=await res.json();
+if(data.token){
+token=data.token;
+localStorage.setItem('token',token);
+document.getElementById('loginArea').style.display='none';
+document.getElementById('painelArea').style.display='block';
+carregarDados();
+erroMsg.style.display='none';
+}else{erroMsg.style.display='block';}
+}catch(e){erroMsg.style.display='block';}
+}
+function logout(){token='';localStorage.removeItem('token');document.getElementById('loginArea').style.display='flex';document.getElementById('painelArea').style.display='none';document.getElementById('senhaInput').value='';}
+async function carregarDados(){
+if(!token)return;
+try{
+const res=await fetch('/api/atendimentos',{headers:{'Authorization':'Bearer '+token}});
+dadosAtendimentos=await res.json();
+const statsRes=await fetch('/api/estatisticas',{headers:{'Authorization':'Bearer '+token}});
+const stats=await statsRes.json();
+document.getElementById('stats').innerHTML='<div class="stat-card"><div class="stat-number">'+(stats.total||0)+'</div><div>Total</div></div><div class="stat-card"><div class="stat-number">'+(stats.naFila||0)+'</div><div>Na Fila</div></div><div class="stat-card"><div class="stat-number">'+(stats.aprovados||0)+'</div><div>Aprovados</div></div><div class="stat-card"><div class="stat-number">'+(stats.recusados||0)+'</div><div>Recusados</div></div>';
+renderizarColunas();
+}catch(e){console.error(e);}
+}
+function formatarTempo(dataCriacao){
+if(!dataCriacao)return'agora';
+const criado=new Date(dataCriacao);
+const agora=new Date();
+const diffMin=Math.floor((agora-criado)/60000);
+if(diffMin<1)return'agora';
+if(diffMin<60)return diffMin+' min';
+return Math.floor(diffMin/60)+'h';
+}
+function renderizarColunas(){
+const fila=dadosAtendimentos.filter(a=>a.status==='FILA'&&a.pagamento);
+const emAtendimento=dadosAtendimentos.filter(a=>a.status==='EM_ATENDIMENTO');
+const aguardandoDecisao=dadosAtendimentos.filter(a=>a.status==='PRONTO_PARA_DECISAO');
+let filaHtml='';
+if(fila.length===0){filaHtml='<div class="empty-state">📭 Nenhum paciente na fila</div>';}
+else{fila.forEach(a=>{filaHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">⏱️ Há '+formatarTempo(a.pago_em||a.criado_em)+'</div><div class="card-actions"><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">📋 Abrir Prontuário</button><button class="btn btn-pegar" onclick="pegarProximo()">🎯 Pegar Próximo</button></div></div>';});}
+document.getElementById('filaColuna').innerHTML=filaHtml;
+let atendimentoHtml='';
+if(emAtendimento.length===0){atendimentoHtml='<div class="empty-state">📋 Nenhum caso em atendimento</div>';}
+else{emAtendimento.forEach(a=>{atendimentoHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">🔒 Em análise</div><div class="card-actions"><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">✏️ Continuar</button></div></div>';});}
+document.getElementById('atendimentoColuna').innerHTML=atendimentoHtml;
+let decisaoHtml='';
+if(aguardandoDecisao.length===0){decisaoHtml='<div class="empty-state">⚖️ Aguardando prontuários</div>';}
+else{aguardandoDecisao.forEach(a=>{decisaoHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">📋 Prontuário preenchido</div><div class="card-actions"><button class="btn btn-aprovar" onclick="aprovarConsulta(\\''+a.id+'\\')">✅ Aprovar</button><button class="btn btn-recusar" onclick="recusarConsulta(\\''+a.id+'\\')">❌ Recusar</button><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">📋 Ver Prontuário</button></div></div>';});}
+document.getElementById('decisaoColuna').innerHTML=decisaoHtml;
+}
+async function pegarProximo(){
+try{
+const res=await fetch('/api/fila/pegar-proximo',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({medicoId:'medico_'+Date.now()})});
+const data=await res.json();
+if(data.sucesso){window.location.href='/prontuario/'+data.atendimento.id;}
+else{alert('Fila vazia ou caso já em atendimento: '+(data.motivo||''));carregarDados();}
+}catch(e){alert('Erro: '+e.message);}
+}
+function abrirProntuario(id){window.location.href='/prontuario/'+id;}
+async function aprovarConsulta(id){
+const orientacoes=prompt('Orientação médica (opcional):');
+if(!confirm('Confirmar aprovação? O paciente receberá a receita.'))return;
+try{
+const res=await fetch('/api/decisao/'+id,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({decisao:'APROVAR',orientacoes:orientacoes||''})});
+if(res.ok){alert('✅ Consulta aprovada! Paciente receberá a receita.');carregarDados();}
+else{alert('❌ Erro ao aprovar');}
+}catch(e){alert('Erro: '+e.message);}
+}
+async function recusarConsulta(id){
+const motivo=prompt('Motivo da recusa (opcional):');
+if(!confirm('Confirmar recusa? Paciente será notificado.'))return;
+try{
+const res=await fetch('/api/decisao/'+id,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({decisao:'RECUSAR',orientacoes:motivo||''})});
+if(res.ok){alert('❌ Consulta recusada!');carregarDados();}
+else{alert('❌ Erro ao recusar');}
+}catch(e){alert('Erro: '+e.message);}
+}
+if(token){document.getElementById('loginArea').style.display='none';document.getElementById('painelArea').style.display='block';carregarDados();}
+setInterval(()=>{if(token)carregarDados();},30000);
 </script>
 </body>
 </html>
   `);
 })  
-  
+
 // ========================
 // PÁGINAS PÚBLICAS
 // ========================
