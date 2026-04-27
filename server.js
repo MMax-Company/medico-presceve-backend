@@ -849,7 +849,12 @@ app.get('/painel-medico', (req, res) => {
 // 🏥 PUBLIC PAGES
 // ========================
 app.get('/healthz', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '4.1', service: 'Doctor Prescreve' })
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    service: 'doctor-prescreve-backend'
+  })
 })
 
 app.get('/success', (req, res) => {
@@ -901,6 +906,17 @@ app.get('/', (req, res) => {
 })
 
 // ========================
+// 🚨 LOGS DE ERRO (DEBUG RAILWAY)
+// ========================
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err)
+})
+
+process.on('unhandledRejection', (err) => {
+  console.error('💥 Unhandled Rejection:', err)
+})
+
+// ========================
 // 🚀 INICIA SERVIDOR
 // ========================
 app.listen(PORT, '0.0.0.0', () => {
@@ -919,4 +935,4 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Servidor iniciado com sucesso!\n`)
 })
 
-module.exports = appx
+module.exports = app
