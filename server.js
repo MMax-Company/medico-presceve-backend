@@ -9,15 +9,18 @@ const rateLimit = require('express-rate-limit')
 const jwt = require('jsonwebtoken')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
-const app = express()
 const PORT = process.env.PORT || 3002
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 rodando na porta', PORT)
-})
-
 const BASE_URL = process.env.BASE_URL 
-  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}`)
+  || (process.env.RAILWAY_PUBLIC_DOMAIN 
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` 
+    : `http://localhost:${PORT}`)
+
+app.use(express.json())
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`)
+})
 
 // ========================
 // 🔐 VALIDAÇÃO
@@ -472,6 +475,8 @@ window.recusar=async function(id){
 })
 
 // ========================
-app.get('/healthz',(req,res)=>res.send('ok'))
+app.get('/healthz', (req, res) => {
+  res.status(200).send('ok')
+})
 
 app.listen(PORT,'0.0.0.0',()=>console.log('🚀 rodando',PORT))
