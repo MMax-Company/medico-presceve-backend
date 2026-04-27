@@ -420,7 +420,7 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
 })
 
 // ========================
-// 🏥 PAINEL MÉDICO (VERSÃO COMPLETA)
+// 🏥 PAINEL MÉDICO (SEM INLINE EVENT HANDLERS)
 // ========================
 app.get('/painel-medico', (req, res) => {
   res.send(`<!DOCTYPE html>
@@ -448,8 +448,25 @@ app.get('/painel-medico', (req, res) => {
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
         .login-card h2 { color: #1a6b8a; margin-bottom: 24px; text-align: center; }
-        .login-card input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; }
-        .login-card button { width: 100%; padding: 12px; background: #1a6b8a; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .login-card input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .login-card button {
+            width: 100%;
+            padding: 12px;
+            background: #1a6b8a;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
         .login-card button:hover { background: #0d4f6b; }
         .error-msg { color: red; text-align: center; margin-top: 10px; display: none; }
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; display: none; }
@@ -463,12 +480,25 @@ app.get('/painel-medico', (req, res) => {
             justify-content: space-between;
             align-items: center;
         }
-        .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid white; padding: 10px 20px; border-radius: 8px; cursor: pointer; color: white; }
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+        }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: white; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .stat-number { font-size: 36px; font-weight: bold; color: #1a6b8a; }
         .filtros { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filtro-btn { background: #e9ecef; border: none; padding: 10px 24px; border-radius: 30px; cursor: pointer; }
+        .filtro-btn {
+            background: #e9ecef;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+        }
         .filtro-btn.ativo { background: #1a6b8a; color: white; }
         .table-container { background: white; border-radius: 16px; overflow-x: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         table { width: 100%; border-collapse: collapse; }
@@ -478,18 +508,25 @@ app.get('/painel-medico', (req, res) => {
         .status-aprovado { background: #d4edda; color: #155724; }
         .status-recusado { background: #f8d7da; color: #721c24; }
         .status-fila { background: #fff3cd; color: #856404; }
-        .btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; margin: 2px; }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 2px;
+        }
         .btn-primary { background: #28a745; color: white; }
         .btn-danger { background: #dc3545; color: white; }
         .btn-info { background: #17a2b8; color: white; }
     </style>
 </head>
 <body>
+
 <div id="login" class="login-container">
     <div class="login-card">
         <h2>🔐 Painel Médico</h2>
-        <input type="password" id="senha" placeholder="Digite sua senha" onkeypress="if(event.key==='Enter') login()">
-        <button onclick="login()">Entrar</button>
+        <input type="password" id="senha" placeholder="Digite sua senha">
+        <button id="btnLogin">Entrar</button>
         <div id="erroMsg" class="error-msg">❌ Senha incorreta!</div>
     </div>
 </div>
@@ -498,14 +535,14 @@ app.get('/painel-medico', (req, res) => {
     <div class="container">
         <div class="painel-header">
             <h1>📊 Doctor Prescreve - Painel Médico</h1>
-            <button class="logout-btn" onclick="logout()">Sair</button>
+            <button id="btnLogout" class="logout-btn">Sair</button>
         </div>
         <div class="stats-grid" id="stats">⏳ Carregando...</div>
         <div class="filtros">
-            <button class="filtro-btn ativo" onclick="filtrar('todos')">Todos</button>
-            <button class="filtro-btn" onclick="filtrar('fila')">Na Fila</button>
-            <button class="filtro-btn" onclick="filtrar('aprovados')">Aprovados</button>
-            <button class="filtro-btn" onclick="filtrar('recusados')">Recusados</button>
+            <button data-filtro="todos" class="filtro-btn ativo">Todos</button>
+            <button data-filtro="fila" class="filtro-btn">Na Fila</button>
+            <button data-filtro="aprovados" class="filtro-btn">Aprovados</button>
+            <button data-filtro="recusados" class="filtro-btn">Recusados</button>
         </div>
         <div class="table-container" id="atendimentos">⏳ Carregando...</div>
     </div>
@@ -516,8 +553,21 @@ app.get('/painel-medico', (req, res) => {
     let dadosAtendimentos = [];
     let filtroAtual = 'todos';
 
-    async function login() {
-        const senha = document.getElementById('senha').value;
+    // Elementos DOM
+    const loginDiv = document.getElementById('login');
+    const painelDiv = document.getElementById('painel');
+    const senhaInput = document.getElementById('senha');
+    const btnLogin = document.getElementById('btnLogin');
+    const btnLogout = document.getElementById('btnLogout');
+    const erroMsg = document.getElementById('erroMsg');
+    const statsDiv = document.getElementById('stats');
+    const atendimentosDiv = document.getElementById('atendimentos');
+
+    // Função de login
+    async function fazerLogin() {
+        const senha = senhaInput.value;
+        if (!senha) return alert('Digite a senha!');
+
         try {
             const res = await fetch('/login', {
                 method: 'POST',
@@ -527,24 +577,27 @@ app.get('/painel-medico', (req, res) => {
             const data = await res.json();
             if (data.token) {
                 token = data.token;
-                document.getElementById('login').style.display = 'none';
-                document.getElementById('painel').style.display = 'block';
+                loginDiv.style.display = 'none';
+                painelDiv.style.display = 'block';
                 carregarDados();
+                erroMsg.style.display = 'none';
             } else {
-                document.getElementById('erroMsg').style.display = 'block';
+                erroMsg.style.display = 'block';
             }
         } catch(e) {
-            alert('Erro: ' + e.message);
+            alert('Erro ao fazer login: ' + e.message);
         }
     }
 
+    // Logout
     function logout() {
         token = '';
-        document.getElementById('login').style.display = 'flex';
-        document.getElementById('painel').style.display = 'none';
-        document.getElementById('senha').value = '';
+        loginDiv.style.display = 'flex';
+        painelDiv.style.display = 'none';
+        senhaInput.value = '';
     }
 
+    // Carregar dados
     async function carregarDados() {
         await carregarEstatisticas();
         await carregarAtendimentos();
@@ -556,7 +609,7 @@ app.get('/painel-medico', (req, res) => {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const stats = await res.json();
-            document.getElementById('stats').innerHTML = 
+            statsDiv.innerHTML = 
                 '<div class="stat-card"><div class="stat-number">' + (stats.total || 0) + '</div><div>Total</div></div>' +
                 '<div class="stat-card"><div class="stat-number">' + (stats.naFila || 0) + '</div><div>Na Fila</div></div>' +
                 '<div class="stat-card"><div class="stat-number">' + (stats.aprovados || 0) + '</div><div>Aprovados</div></div>' +
@@ -574,38 +627,55 @@ app.get('/painel-medico', (req, res) => {
         } catch(e) { console.error(e); }
     }
 
-    function filtrar(tipo) {
-        filtroAtual = tipo;
-        document.querySelectorAll('.filtro-btn').forEach(btn => btn.classList.remove('ativo'));
-        event.target.classList.add('ativo');
-        renderizarAtendimentos();
-    }
-
     function renderizarAtendimentos() {
-        let filtrados = dadosAtendimentos;
-        if (filtroAtual === 'fila') filtrados = dadosAtendimentos.filter(a => a.pagamento && a.status === 'FILA');
-        else if (filtroAtual === 'aprovados') filtrados = dadosAtendimentos.filter(a => a.status === 'APROVADO');
-        else if (filtroAtual === 'recusados') filtrados = dadosAtendimentos.filter(a => a.status === 'RECUSADO');
+        let filtrados = [...dadosAtendimentos];
+        if (filtroAtual === 'fila') {
+            filtrados = filtrados.filter(a => a.pagamento && a.status === 'FILA');
+        } else if (filtroAtual === 'aprovados') {
+            filtrados = filtrados.filter(a => a.status === 'APROVADO');
+        } else if (filtroAtual === 'recusados') {
+            filtrados = filtrados.filter(a => a.status === 'RECUSADO');
+        }
 
         if (filtrados.length === 0) {
-            document.getElementById('atendimentos').innerHTML = '<div style="text-align:center;padding:40px">Nenhum atendimento encontrado</div>';
+            atendimentosDiv.innerHTML = '<div style="text-align:center;padding:40px">Nenhum atendimento encontrado</div>';
             return;
         }
 
         let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>';
         for (const a of filtrados) {
-            let statusClass = a.status === 'APROVADO' ? 'status-aprovado' : (a.status === 'RECUSADO' ? 'status-recusado' : 'status-fila');
-            html += '<tr><td>' + a.id.substring(0,8) + '</td><td>' + (a.paciente_nome || 'N/A') + '</td><td>' + (a.doencas || 'N/A') + '</td>' +
-                '<td><span class="status-badge ' + statusClass + '">' + a.status + '</span></td><td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
-                '<td><button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">Ver</button>';
+            let statusClass = '';
+            if (a.status === 'APROVADO') statusClass = 'status-aprovado';
+            else if (a.status === 'RECUSADO') statusClass = 'status-recusado';
+            else if (a.status === 'FILA') statusClass = 'status-fila';
+            
+            html += '<tr>' +
+                '<td>' + a.id.substring(0, 8) + '</td>' +
+                '<td>' + (a.paciente_nome || 'N/A') + '</tr>' +
+                '<td>' + (a.doencas || 'N/A') + '</td>' +
+                '<td><span class="status-badge ' + statusClass + '">' + (a.status || 'PENDENTE') + '</span></td>' +
+                '<td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
+                '<td>' +
+                    '<button class="btn btn-info" data-id="' + a.id + '" data-acao="ver">Ver</button>';
             if (a.status === 'FILA') {
-                html += '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">Aprovar</button>' +
-                        '<button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">Recusar</button>';
+                html += '<button class="btn btn-primary" data-id="' + a.id + '" data-acao="aprovar">Aprovar</button>' +
+                        '<button class="btn btn-danger" data-id="' + a.id + '" data-acao="recusar">Recusar</button>';
             }
             html += '</td></tr>';
         }
         html += '</tbody></table>';
-        document.getElementById('atendimentos').innerHTML = html;
+        atendimentosDiv.innerHTML = html;
+
+        // Adicionar event listeners para os botões dinâmicos
+        document.querySelectorAll('.btn-info').forEach(btn => {
+            btn.addEventListener('click', () => verDetalhes(btn.getAttribute('data-id')));
+        });
+        document.querySelectorAll('.btn-primary').forEach(btn => {
+            btn.addEventListener('click', () => aprovar(btn.getAttribute('data-id')));
+        });
+        document.querySelectorAll('.btn-danger').forEach(btn => {
+            btn.addEventListener('click', () => recusar(btn.getAttribute('data-id')));
+        });
     }
 
     async function verDetalhes(id) {
@@ -614,31 +684,71 @@ app.get('/painel-medico', (req, res) => {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const a = await res.json();
-            alert('Detalhes:\\n\\nPaciente: ' + (a.paciente_nome || 'N/A') + '\\nTelefone: ' + (a.paciente_telefone || 'N/A') + '\\nCPF: ' + (a.paciente_cpf || 'N/A') + '\\nDoença: ' + (a.doencas || 'N/A'));
-        } catch(e) { alert('Erro ao carregar detalhes'); }
+            alert('📋 DETALHES\\n\\n👤 Paciente: ' + (a.paciente_nome || 'N/A') + 
+                  '\\n📱 Telefone: ' + (a.paciente_telefone || 'N/A') +
+                  '\\n🆔 CPF: ' + (a.paciente_cpf || 'N/A') +
+                  '\\n🏥 Doença: ' + (a.doencas || 'N/A'));
+        } catch(e) {
+            alert('Erro ao carregar detalhes');
+        }
     }
 
     async function aprovar(id) {
         if (!confirm('Aprovar este paciente?')) return;
-        await fetch('/api/decisao/' + id, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ decisao: 'APROVAR' })
-        });
-        carregarDados();
+        try {
+            await fetch('/api/decisao/' + id, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ decisao: 'APROVAR' })
+            });
+            carregarDados();
+        } catch(e) {
+            alert('Erro ao aprovar');
+        }
     }
 
     async function recusar(id) {
         if (!confirm('Recusar este paciente?')) return;
-        await fetch('/api/decisao/' + id, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ decisao: 'RECUSAR' })
-        });
-        carregarDados();
+        try {
+            await fetch('/api/decisao/' + id, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ decisao: 'RECUSAR' })
+            });
+            carregarDados();
+        } catch(e) {
+            alert('Erro ao recusar');
+        }
     }
 
-    setInterval(() => { if (document.getElementById('painel').style.display !== 'none') carregarDados(); }, 30000);
+    // Event Listeners (sem inline handlers)
+    btnLogin.addEventListener('click', fazerLogin);
+    btnLogout.addEventListener('click', logout);
+    
+    senhaInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') fazerLogin();
+    });
+
+    // Filtros
+    document.querySelectorAll('.filtro-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            filtroAtual = btn.getAttribute('data-filtro');
+            document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('ativo'));
+            btn.classList.add('ativo');
+            renderizarAtendimentos();
+        });
+    });
+
+    // Auto-refresh a cada 30 segundos
+    setInterval(() => {
+        if (token) carregarDados();
+    }, 30000);
 </script>
 </body>
 </html>`)
