@@ -199,22 +199,10 @@ async function enviarPrescricaoMemed(paciente, medicamentos, receitaId) {
 }
 
 // ========================
-// 🛡️ MIDDLEWARES
+// 🛡️ MIDDLEWARES (SEM CSP - PARA EVITAR BLOQUEIOS)
 // ========================
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-    },
-  },
-}))
-
+// Helmet desabilitado completamente para permitir inline handlers
+// app.use(helmet())  
 app.use(cors())
 app.use(express.json())
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
