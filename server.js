@@ -148,15 +148,14 @@ async function enviarWhatsApp(numero, msg) {
   }
 }
 
-// ========================
-// 🛡️ MIDDLEWARES (CSP CORRIGIDO)
+// MIDDLEWARES (CSP CORRIGIDO)
 // ========================
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],  // Permite inline scripts
-      scriptSrcAttr: ["'unsafe-inline'"],        // Permite event handlers inline
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
