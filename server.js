@@ -8,6 +8,10 @@ const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const jwt = require('jsonwebtoken')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+const fs = require('fs')
+const path = require('path')
+
+const app = express() // <-- IMPORTANTE: faltava isso!
 
 const PORT = process.env.PORT || 3002
 
@@ -15,12 +19,6 @@ const BASE_URL = process.env.BASE_URL
   || (process.env.RAILWAY_PUBLIC_DOMAIN 
     ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` 
     : `http://localhost:${PORT}`)
-
-app.use(express.json())
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`)
-})
 
 // ========================
 // 🔐 VALIDAÇÃO
@@ -58,8 +56,6 @@ function decrypt(text){
 // ========================
 // 💾 DB
 // ========================
-const fs = require('fs')
-const path = require('path')
 const DB_DIR='data'
 if(!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR,{recursive:true})
 
@@ -105,7 +101,7 @@ async function enviarWhatsApp(numero,msg){
 // 🛡️ MIDDLEWARE
 // ========================
 app.use(helmet({
-  entSecurityPolicy:{
+  contentSecurityPolicy:{ // <-- CORRIGIDO: era 'entSecurityPolicy'
     directives:{
       defaultSrc:["'self'"],
       scriptSrc:["'self'","'unsafe-inline'","'unsafe-eval'","blob:"],
@@ -283,11 +279,12 @@ app.get('/api/estatisticas',auth,(req,res)=>{
 })
 
 // ========================
-// 🏥 PAINEL
+// 🏥 PAINEL (VERSÃO ÚNICA E CORRIGIDA)
 // ========================
 app.get('/painel-medico', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html>
+<head><meta charset="UTF-8"><title>Painel Médico</title></head>
 <body>
 
 <input id="senha" placeholder="senha">
@@ -303,10 +300,11 @@ app.get('/painel-medico', (req, res) => {
 let token=''
 
 window.login = async function(){
+  const senhaInput = document.getElementById('senha')
   const res = await fetch('/login',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({senha:document.getElementById('senha').value})
+    body:JSON.stringify({senha: senhaInput.value})
   })
   const d = await res.json()
   token = d.token
@@ -317,7 +315,6 @@ window.login = async function(){
 async function load(){
   const s = await fetch('/api/estatisticas',{headers:{Authorization:'Bearer '+token}})
   const stats = await s.json()
-
   document.getElementById('stats').innerHTML =
     'Total:'+stats.total+' | Fila:'+stats.fila+' | Aprovados:'+stats.aprovados
 
@@ -326,11 +323,10 @@ async function load(){
 
   let html=''
   dados.forEach(a=>{
-    html += '<div>'+a.id+
-      ' <button onclick="window.aprovar(&quot;'+a.id+'&quot;)">Aprovar</button>'+
+    html += '<div>' + a.id.substring(0,6) + ' - ' + (a.paciente_nome || '') + ' - ' + a.status +
+      ' <button onclick="window.aprovar(&quot;'+a.id+'&quot;)">Aprovar</button>' +
       ' <button onclick="window.recusar(&quot;'+a.id+'&quot;)">Recusar</button></div>'
   })
-
   document.getElementById('lista').innerHTML = html
 }
 
@@ -357,65 +353,16 @@ window.recusar = async function(id){
 </html>`)
 })
 
-<input id="senha" placeholder="senha">
-<button onclick="window.login()">Entrar</button>
-
-<div id="painel" style="display:none">
-<h3>Painel Médico</h3>
-<div id="stats"></div>
-<div id="lista"></div>
-</div>
-
-<script>
-let token=''
-
-window.login=async function(){
- const res=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senha:senha.value})})
- const d=await res.json()
- token=d.token
- painel.style.display='block'
- load()
-}
-
-async function load(){
- const s=await fetch('/api/estatisticas',{headers:{Authorization:'Bearer '+token}})
- const stats=await s.json()
- document.getElementById('stats').innerHTML=
- 'Total:'+stats.total+' | Fila:'+stats.fila+' | Aprovados:'+stats.aprovados
-
- const res=await fetch('/api/atendimentos',{headers:{Authorization:'Bearer '+token}})
- const dados=await res.json()
-
- let html=''
- dados.forEach(a=>{
-  html+=\`<div>
-  \${a.id.substring(0,6)} - \${a.paciente_nome} - \${a.status}
-  <button onclick="window.aprovar('\${a.id}')">Aprovar</button>
-  <button onclick="window.recusar('\${a.id}')">Recusar</button>
-  </div>\`
- })
-
- document.getElementById('lista').innerHTML=html
-}
-
-window.aprovar=async function(id){
- await fetch('/api/decisao/'+id,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({decisao:'APROVAR'})})
- load()
-}
-
-window.recusar=async function(id){
- await fetch('/api/decisao/'+id,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({decisao:'RECUSAR'})})
- load()
-}
-</script>
-
-</body>
-</html>`)
-})
-
+// ========================
+// HEALTH CHECK
 // ========================
 app.get('/healthz', (req, res) => {
   res.status(200).send('ok')
 })
 
-app.listen(PORT,'0.0.0.0',()=>console.log('🚀 rodando',PORT))
+// ========================
+// INICIAR SERVIDOR (REMOVA O app.listen DUPLICADO)
+// ========================
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`)
+})
