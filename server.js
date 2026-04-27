@@ -586,53 +586,64 @@ app.post('/api/webhook/triagem', async (req, res) => {
       return res.status(400).json({ error: 'Dados inválidos' })
     }
 
-const doencasElegiveis = [
-  // Hipertensão Arterial Sistemica
-  'has', 'hipertensao', 'hipertensão', 'pressao alta', 
-  // Diabetes
-  'diabetes', 'diabete', 'dm', 'diabetes mellitus',
-  // Dislipidemia
-  'dlp', 'dislipidemia', 'colesterol alto', 'triglicerides',
-  // Hipotireoidismo
-  'hipotireoidismo', 'hipotireoide'
-]
+    // 🔥 GERAR ID PRIMEIRO
+    const id = uuidv4()
 
-// Normaliza o texto (remove acentos)
-const textoNormalizado = texto
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase()
+    // 🔥 TRATAR O TEXTO DAS DOENÇAS
+    let texto = ''
+    if (Array.isArray(triagem.doencas)) {
+      texto = triagem.doencas.join(' ').toLowerCase()
+    } else {
+      texto = (triagem.doencas || '').toLowerCase()
+    }
 
-const elegivel = doencasElegiveis.some(d => textoNormalizado.includes(d))
+    const doencasElegiveis = [
+      // Hipertensão Arterial Sistemica
+      'has', 'hipertensao', 'hipertensão', 'pressao alta', 
+      // Diabetes
+      'diabetes', 'diabete', 'dm', 'diabetes mellitus',
+      // Dislipidemia
+      'dlp', 'dislipidemia', 'colesterol alto', 'triglicerides',
+      // Hipotireoidismo
+      'hipotireoidismo', 'hipotireoide'
+    ]
 
-const atendimento = {
-  id,
-  paciente_nome: encrypt(paciente.nome),
-  paciente_telefone: encrypt(paciente.telefone || ''),
-  paciente_cpf: encrypt(paciente.cpf || ''),
-  paciente_email: encrypt(paciente.email || ''),
-  paciente_nascimento: encrypt(paciente.data_nascimento || ''),
-  doencas: encrypt(texto),
-  
-  // 🔥 NOVOS CAMPOS - DADOS DA TRIAGEM
-  medicamento: encrypt(triagem.medicamento || ''),
-  medicamento2: encrypt(triagem.medicamento2 || ''),
-  tempo_uso: encrypt(triagem.tempoUso || ''),
-  sinais_alerta: encrypt(String(triagem.sinaisAlerta || '')),
-  
-  elegivel,
-  status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
-  pagamento: false,
-  criado_em: new Date().toISOString(),
-  pago_em: null,
-  em_atendimento_por: null,
-  em_atendimento_desde: null,
-  prioridade: 0,
-  tentativas_lock: 0,
-  locked_until: null
-}
+    // Normaliza o texto (remove acentos)
+    const textoNormalizado = texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
 
-await db.salvarAtendimento(atendimento)
+    const elegivel = doencasElegiveis.some(d => textoNormalizado.includes(d))
+
+    const atendimento = {
+      id,
+      paciente_nome: encrypt(paciente.nome),
+      paciente_telefone: encrypt(paciente.telefone || ''),
+      paciente_cpf: encrypt(paciente.cpf || ''),
+      paciente_email: encrypt(paciente.email || ''),
+      paciente_nascimento: encrypt(paciente.data_nascimento || ''),
+      doencas: encrypt(texto),
+      
+      // DADOS DA TRIAGEM
+      medicamento: encrypt(triagem.medicamento || ''),
+      medicamento2: encrypt(triagem.medicamento2 || ''),
+      tempo_uso: encrypt(triagem.tempoUso || ''),
+      sinais_alerta: encrypt(String(triagem.sinaisAlerta || '')),
+      
+      elegivel,
+      status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
+      pagamento: false,
+      criado_em: new Date().toISOString(),
+      pago_em: null,
+      em_atendimento_por: null,
+      em_atendimento_desde: null,
+      prioridade: 0,
+      tentativas_lock: 0,
+      locked_until: null
+    }
+
+    await db.salvarAtendimento(atendimento)
 
     if (elegivel) {
       const url = `${BASE_URL}/api/payment/${id}`
@@ -643,6 +654,7 @@ await db.salvarAtendimento(atendimento)
 
     res.json({ success: true, id, elegivel, payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null })
   } catch(e) {
+    console.error('❌ Erro na triagem:', e)
     res.status(500).json({ error: e.message })
   }
 })
