@@ -1127,6 +1127,119 @@ setInterval(()=>{if(token)carregarDados();},30000);
 })  
 
 // ========================
+// 🔗 MEMED - ROTAS DE INTEGRAÇÃO
+// ========================
+
+// 1. CADASTRAR PRESCRITOR NA MEMED
+app.post('/api/memed/cadastrar-prescritor', auth, async (req, res) => {
+  try {
+    if (!process.env.MEMED_API_KEY) {
+      return res.status(400).json({ error: 'Memed não configurado' });
+    }
+
+    const response = await axios.post(
+      `${process.env.MEMED_API_URL}/sinapse-prescricao/usuarios`,
+      {
+        nome: process.env.MEDICO_NOME,
+        sobrenome: process.env.MEDICO_SOBRENOME,
+        cpf: process.env.MEDICO_CPF,
+        registro: process.env.MEDICO_NUMERO,
+        uf: process.env.MEDICO_UF,
+        email: process.env.MEDICO_EMAIL,
+        especialidade: "Clínica Geral",
+        data_nascimento: "01/01/1980"
+      },
+      {
+        params: {
+          'api-key': process.env.MEMED_API_KEY,
+          'secret-key': process.env.MEMED_SECRET_KEY
+        },
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+
+    const usuario = response.data.data;
+    console.log(`✅ Prescritor cadastrado na Memed: ${usuario.nome}`);
+
+    res.json({
+      success: true,
+      message: 'Prescritor cadastrado com sucesso',
+      token: usuario.token,
+      medico: { id: usuario.id, nome: usuario.nome, crm: usuario.crm }
+    });
+  } catch(e) {
+    console.error('❌ Erro ao cadastrar prescritor:', e.response?.data || e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 2. OBTER TOKEN DO PRESCRITOR (BUSCAR POR CPF)
+app.get('/api/memed/token-prescritor', auth, async (req, res) => {
+  try {
+    if (!process.env.MEMED_API_KEY) {
+      return res.status(400).json({ error: 'Memed não configurado' });
+    }
+
+    const identificador = process.env.MEDICO_CPF; // CPF sem pontos ou traços
+
+    const response = await axios.get(
+      `${process.env.MEMED_API_URL}/sinapse-prescricao/usuarios/${identificador}`,
+      {
+        params: {
+          'api-key': process.env.MEMED_API_KEY,
+          'secret-key': process.env.MEMED_SECRET_KEY
+        },
+        headers: { 'Accept': 'application/vnd.api+json' }
+      }
+    );
+
+    const usuario = response.data.data;
+    console.log(`✅ Token do prescritor obtido: ${usuario.token?.substring(0, 20)}...`);
+
+    res.json({
+      success: true,
+      token: usuario.token,
+      expira_em: usuario.token_expires_at,
+      medico: { nome: usuario.nome, crm: usuario.crm, uf: usuario.uf }
+    });
+  } catch(e) {
+    console.error('❌ Erro ao obter token:', e.response?.data || e.message);
+    
+    if (e.response?.status === 404) {
+      res.status(404).json({ error: 'Prescritor não encontrado', acao: 'cadastrar' });
+    } else {
+      res.status(500).json({ error: e.message });
+    }
+  }
+});
+
+// 3. RECEBER EVENTO DE PRESCRIÇÃO GERADA (WEBHOOK DO FRONTEND)
+app.post('/api/memed/prescricao-gerada', auth, async (req, res) => {
+  try {
+    const { prescricaoId, paciente, medicamentos, documento } = req.body;
+    
+    console.log(`📋 Prescrição Memed recebida: ${prescricaoId}`);
+    
+    // Buscar o PDF da receita
+    const pdfFile = documento?.find(doc => doc.type === 'full');
+    
+    // Enviar WhatsApp com a receita
+    const msg = `✅ Olá ${paciente.nome}!\n\n` +
+                `Sua receita foi gerada com sucesso!\n\n` +
+                `📋 Número: ${prescricaoId}\n` +
+                `💊 Medicamentos:\n${medicamentos?.map(m => `- ${m.nome}`).join('\n') || 'Conforme prescrição'}\n\n` +
+                `💊 Doctor Prescreve - Cuide da sua saúde!`;
+    
+    await enviarWhatsApp(paciente.telefone, msg);
+    
+    res.json({ success: true });
+  } catch(e) {
+    console.error('❌ Erro ao processar prescrição gerada:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ========================
 // PÁGINAS PÚBLICAS
 // ========================
 app.get('/healthz', (req, res) => res.json({ status: 'ok' }))
