@@ -12,6 +12,10 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const app = express()
 const PORT = process.env.PORT || 3002
 
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('🚀 rodando na porta', PORT)
+})
+
 const BASE_URL = process.env.BASE_URL 
   || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}`)
 
@@ -98,7 +102,7 @@ async function enviarWhatsApp(numero,msg){
 // 🛡️ MIDDLEWARE
 // ========================
 app.use(helmet({
-  contentSecurityPolicy:{
+  entSecurityPolicy:{
     directives:{
       defaultSrc:["'self'"],
       scriptSrc:["'self'","'unsafe-inline'","'unsafe-eval'","blob:"],
@@ -280,7 +284,7 @@ res.send(`<!DOCTYPE html>
 <title>Painel Médico</title>
 <style>
 body{font-family:Arial;background:#f4f6f9;margin:0;padding:20px}
-.container{max-width:1000px;margin:auto}
+.ainer{max-width:1000px;margin:auto}
 .card{background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
 h1{margin-top:0}
 input{padding:10px;width:200px}
@@ -298,7 +302,7 @@ th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}
 </head>
 
 <body>
-<div class="container">
+<div class="ainer">
 
 <div id="login" class="card">
 <h2>Login Médico</h2>
@@ -332,7 +336,7 @@ let token=''
 window.login=async function(){
  const res=await fetch('/login',{
   method:'POST',
-  headers:{'Content-Type':'application/json'},
+  headers:{'ent-Type':'application/json'},
   body:JSON.stringify({senha:senha.value})
  })
  const d=await res.json()
