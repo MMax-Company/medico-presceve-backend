@@ -157,7 +157,7 @@ app.use(helmet({
         "blob:"
       ],
 
-      scriptSrcAttr: ["'unsafe-inline'"], // 🔥 ESSA LINHA RESOLVE
+      scriptSrcAttr: ["'unsafe-inline'"],
 
       styleSrc: [
         "'self'",
@@ -678,7 +678,7 @@ app.get('/painel-medico', (req, res) => {
         let dadosAtendimentos = []
         let filtroAtual = 'todos'
 
-        window.login = async function () {
+        async function login() {
             const senha = document.getElementById('senha').value
             if (!senha) return alert('Digite a senha!')
 
@@ -702,14 +702,14 @@ app.get('/painel-medico', (req, res) => {
             }
         }
 
-        window.logout = function () {
+        function logout() {
             token = ''
             document.getElementById('login').style.display = 'flex'
             document.getElementById('painel').style.display = 'none'
             document.getElementById('senha').value = ''
         }
 
-        window.carregarDados = async function () {
+        async function carregarDados() {
             await carregarEstatisticas()
             await carregarAtendimentos()
         }
@@ -754,7 +754,6 @@ app.get('/painel-medico', (req, res) => {
 
         function renderizarAtendimentos() {
             let filtrados = [...dadosAtendimentos]
-
             if (filtroAtual === 'fila') {
                 filtrados = filtrados.filter(a => a.pagamento && a.status === 'FILA')
             } else if (filtroAtual === 'aprovados') {
@@ -769,7 +768,6 @@ app.get('/painel-medico', (req, res) => {
             }
 
             let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>'
-
             for (const a of filtrados) {
                 let statusClass = ''
                 if (a.status === 'APROVADO') statusClass = 'status-aprovado'
@@ -777,40 +775,19 @@ app.get('/painel-medico', (req, res) => {
                 else if (a.status === 'FILA') statusClass = 'status-fila'
                 else if (a.status === 'INELEGIVEL') statusClass = 'status-inelegivel'
 
-                html += \`
-                <tr>
-                  <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">
-                    \${a.id.substring(0, 8)}
-                  </code></td>
-
-                  <td><strong>\${a.paciente_nome || 'N/A'}</strong></td>
-                  <td>\${a.doencas || 'N/A'}</td>
-
-                  <td>
-                    <span class="status-badge \${statusClass}">
-                      \${a.status || 'PENDENTE'}
-                    </span>
-                  </td>
-
-                  <td>\${a.pagamento ? '✅ Pago' : '⏳ Pendente'}</td>
-
-                  <td>
-                    <button class="btn btn-info" onclick="verDetalhes('\${a.id}')">📋 Ver</button>
-                \`
-
+                html += '<tr>' +
+                    '<td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">' + a.id.substring(0, 8) + '</code></td>' +
+                    '<td><strong>' + (a.paciente_nome || 'N/A') + '</strong></td>' +
+                    '<td>' + (a.doencas || 'N/A') + '</td>' +
+                    '<td><span class="status-badge ' + statusClass + '">' + (a.status || 'PENDENTE') + '</span></td>' +
+                    '<td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
+                    '<td><button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">📋 Ver</button>'
                 if (a.status === 'FILA') {
-                    html += \`
-                        <button class="btn btn-primary" onclick="aprovar('\${a.id}')">✅ Aprovar</button>
-                        <button class="btn btn-danger" onclick="recusar('\${a.id}')">❌ Recusar</button>
-                    \`
+                    html += '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">✅ Aprovar</button>' +
+                            '<button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">❌ Recusar</button>'
                 }
-
-                html += \`
-                  </td>
-                </tr>
-                \`
+                html += '</td></tr>'
             }
-
             html += '</tbody></table>'
             document.getElementById('atendimentos').innerHTML = html
         }
@@ -821,22 +798,22 @@ app.get('/painel-medico', (req, res) => {
                     headers: { 'Authorization': 'Bearer ' + token }
                 })
                 const a = await res.json()
-                const detalhes =
-                    '📋 DETALHES DO ATENDIMENTO\n\n' +
-                    '👤 Paciente: ' + (a.paciente_nome || 'N/A') + '\n' +
-                    '📱 Telefone: ' + (a.paciente_telefone || 'N/A') + '\n' +
-                    '🆔 CPF: ' + (a.paciente_cpf || 'N/A') + '\n' +
-                    '📧 Email: ' + (a.paciente_email || 'N/A') + '\n' +
-                    '🏥 Doença: ' + (a.doencas || 'N/A') + '\n' +
-                    '📊 Status: ' + (a.status || 'PENDENTE') + '\n' +
+                const detalhes = 
+                    '📋 DETALHES DO ATENDIMENTO\\n\\n' +
+                    '👤 Paciente: ' + (a.paciente_nome || 'N/A') + '\\n' +
+                    '📱 Telefone: ' + (a.paciente_telefone || 'N/A') + '\\n' +
+                    '🆔 CPF: ' + (a.paciente_cpf || 'N/A') + '\\n' +
+                    '📧 Email: ' + (a.paciente_email || 'N/A') + '\\n' +
+                    '🏥 Doença: ' + (a.doencas || 'N/A') + '\\n' +
+                    '📊 Status: ' + (a.status || 'PENDENTE') + '\\n' +
                     '💳 Pagamento: ' + (a.pagamento ? 'Pago' : 'Pendente')
                 alert(detalhes)
-            } catch (e) {
+            } catch(e) {
                 alert('Erro ao carregar detalhes')
             }
         }
 
-        window.aprovar = async function (id) {
+        async function aprovar(id) {
             if (!confirm('Aprovar este paciente?')) return
             try {
                 const res = await fetch(API_URL + '/api/decisao/' + id, {
@@ -852,12 +829,12 @@ app.get('/painel-medico', (req, res) => {
                     alert('✅ Paciente aprovado!')
                     carregarDados()
                 }
-            } catch (e) {
+            } catch(e) {
                 alert('Erro ao aprovar')
             }
         }
 
-        window.recusar = async function (id) {
+        async function recusar(id) {
             if (!confirm('Recusar este paciente?')) return
             try {
                 const res = await fetch(API_URL + '/api/decisao/' + id, {
@@ -873,11 +850,11 @@ app.get('/painel-medico', (req, res) => {
                     alert('❌ Paciente recusado')
                     carregarDados()
                 }
-            } catch (e) {
+            } catch(e) {
                 alert('Erro ao recusar')
             }
         }
-        
+
         setInterval(() => {
             if (document.getElementById('painel').style.display !== 'none') {
                 carregarDados()
@@ -892,7 +869,12 @@ app.get('/painel-medico', (req, res) => {
 // 🏥 PUBLIC PAGES
 // ========================
 app.get('/healthz', (req, res) => {
-  res.status(200).send('ok')
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    service: 'doctor-prescreve-backend'
+  })
 })
 
 app.get('/success', (req, res) => {
