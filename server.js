@@ -891,61 +891,6 @@ app.post('/api/receita/:id', auth, async (req, res) => {
 })
 
 // ========================
-// ⚖️ DECISÃO MÉDICA (COM FALLBACK DO MEMED)
-// ========================
-app.post('/api/decisao/:id', auth, async (req, res) => {
-  try {
-    const { decisao, orientacoes } = req.body
-    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
-    
-    await db.atualizarStatus(req.params.id, novoStatus)
-
-    const at = await db.buscarAtendimentoPorId(req.params.id)
-    const telefone = decrypt(at.paciente_telefone)
-    const nome = decrypt(at.paciente_nome)
-
-    if (decisao === 'APROVAR') {
-      const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
-      
-      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
-      
-      if (resultado.metodo === 'memed') {
-        msg += `🔒 Receita digital enviada para seu WhatsApp/Email\n`
-      } else if (resultado.metodo === 'pdf_fallback') {
-        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
-      } else {
-        msg += `⚠️ Aguarde, a receita será enviada em breve.\n`
-      }
-      
-      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
-      
-      await enviarWhatsApp(telefone, msg)
-      
-      at.decisao_historico = {
-        status: 'APROVADO',
-        data: new Date().toISOString(),
-        medico: req.user?.id || 'medico',
-        orientacoes,
-        receita_envio: resultado
-      }
-      await db.salvarAtendimento(at)
-      
-    } else {
-      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
-      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
-      msg += `\n\n🏥 Procure um atendimento presencial.`
-      
-      await enviarWhatsApp(telefone, msg)
-    }
-
-    res.json({ success: true, novoStatus })
-  } catch(e) {
-    console.error('❌ Erro na decisão:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-// ========================
 // 📋 PRONTUÁRIO DO PACIENTE
 // ========================
 app.get('/prontuario/:id', auth, async (req, res) => {
