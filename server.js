@@ -1482,6 +1482,37 @@ app.get('/success', (req, res) => res.send('<h1>✅ Pagamento Confirmado!</h1><p
 app.get('/cancel', (req, res) => res.send('<h1>❌ Pagamento Cancelado</h1><a href="/">Voltar</a>'))
 app.get('/', (req, res) => res.json({ service: 'Doctor Prescreve', status: 'online' }))
 
+// 🔧 ROTA TEMPORÁRIA PARA SIMULAR PAGAMENTO (APENAS TESTE)
+app.post('/api/teste/simular-pagamento/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params
+    const at = await db.buscarAtendimentoPorId(id)
+    
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    if (at.pagamento) {
+      return res.json({ message: 'Pagamento já confirmado', status: at.status })
+    }
+    
+    at.pagamento = true
+    at.status = 'FILA'
+    at.pago_em = new Date().toISOString()
+    
+    await db.salvarAtendimento(at)
+    
+    const telefone = decrypt(at.paciente_telefone)
+    if (telefone) {
+      await enviarWhatsApp(telefone, '✅ Pagamento confirmado! Você está na fila.')
+    }
+    
+    res.json({ success: true, message: 'Pagamento simulado com sucesso', status: at.status })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ========================
 // 🚀 INICIA SERVIDOR
 // ========================
