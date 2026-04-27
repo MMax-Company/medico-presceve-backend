@@ -586,16 +586,24 @@ app.post('/api/webhook/triagem', async (req, res) => {
       return res.status(400).json({ error: 'Dados inválidos' })
     }
 
-const id = uuidv4()
-// 🔧 CORREÇÃO: trata se doencas for array ou string
-let texto = ''
-if (Array.isArray(triagem.doencas)) {
-  texto = triagem.doencas.join(' ').toLowerCase()
-} else {
-  texto = (triagem.doencas || '').toLowerCase()
-}
-const doencasElegiveis = ['has', 'diabetes', 'hipertensão', 'pressão', 'hipotireoidismo', 'dislipidemia']
-const elegivel = doencasElegiveis.some(d => texto.includes(d))
+const doencasElegiveis = [
+  // Hipertensão Arterial Sistemica
+  'has', 'hipertensao', 'hipertensão', 'pressao alta', 
+  // Diabetes
+  'diabetes', 'diabete', 'dm', 'diabetes mellitus',
+  // Dislipidemia
+  'dlp', 'dislipidemia', 'colesterol alto', 'triglicerides',
+  // Hipotireoidismo
+  'hipotireoidismo', 'hipotireoide'
+]
+
+// Normaliza o texto (remove acentos)
+const textoNormalizado = texto
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+
+const elegivel = doencasElegiveis.some(d => textoNormalizado.includes(d))
 
 const atendimento = {
   id,
