@@ -93,6 +93,20 @@ const webhookDb = {
   }
 }
 
+// Função para calcular tempo médio de espera
+function calcularTempoMedioEspera(atendimentos) {
+  const aprovados = atendimentos.filter(a => a.status === 'APROVADO' && a.pago_em && a.finalizado_em)
+  if (aprovados.length === 0) return 0
+  
+  const totalMinutos = aprovados.reduce((sum, a) => {
+    const pagamento = new Date(a.pago_em)
+    const finalizado = new Date(a.finalizado_em)
+    return sum + ((finalizado - pagamento) / 60000)
+  }, 0)
+  
+  return Math.floor(totalMinutos / aprovados.length)
+}
+
 // Main DB
 const db = {
   async salvarAtendimento(at) {
@@ -189,6 +203,22 @@ const db = {
     }
   },
 
+  async liberarAtendimento(atendimentoId, manterLock = false) {
+    const at = await this.buscarAtendimentoPorId(atendimentoId)
+    
+    if (!at) return false
+    
+    if (!manterLock) {
+      at.status = 'FILA'
+      at.em_atendimento_por = null
+      at.em_atendimento_desde = null
+      at.locked_until = null
+    }
+    
+    await this.salvarAtendimento(at)
+    return true
+  },
+
   async getFilaOrdenada() {
     const atendimentos = await this.getAtendimentos()
     
@@ -198,15 +228,16 @@ const db = {
       if (a.status === 'APROVADO' || a.status === 'RECUSADO') return false
       if (a.status === 'EM_ATENDIMENTO') {
         if (a.locked_until && new Date(a.locked_until) < new Date()) {
-          return true // lock expirado, volta pra fila
+          return true
         }
         return false
       }
       return a.status === 'FILA'
     })
     
-    // Ordenar por data de pagamento (mais antigo primeiro)
+    // Ordenar por prioridade e depois por data de pagamento
     fila.sort((a, b) => {
+      if (a.prioridade !== b.prioridade) return (b.prioridade || 0) - (a.prioridade || 0)
       return new Date(a.pago_em || a.criado_em) - new Date(b.pago_em || b.criado_em)
     })
     
@@ -253,7 +284,6 @@ async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
       const stream = fs.createWriteStream(filepath)
       doc.pipe(stream)
       
-      // Cabeçalho
       doc.fontSize(20).font('Helvetica-Bold').text('RECEITA MÉDICA', { align: 'center' })
       doc.moveDown()
       doc.fontSize(12).font('Helvetica').text('Doctor Prescreve - Telemedicina', { align: 'center' })
@@ -261,7 +291,6 @@ async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
       doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, { align: 'right' })
       doc.moveDown()
       
-      // Dados do paciente
       doc.fontSize(14).font('Helvetica-Bold').text('DADOS DO PACIENTE')
       doc.moveDown(0.5)
       doc.fontSize(11).font('Helvetica')
@@ -271,7 +300,6 @@ async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
       doc.text(`Diagnóstico: ${doencas}`)
       doc.moveDown()
       
-      // Medicações
       doc.fontSize(14).font('Helvetica-Bold').text('PRESCRIÇÃO')
       doc.moveDown(0.5)
       doc.fontSize(11).font('Helvetica')
@@ -289,7 +317,6 @@ async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
         doc.moveDown()
       }
       
-      // Orientações
       const textoOrientacoes = orientacoes || prontuario?.orientacoes
       if (textoOrientacoes) {
         doc.moveDown()
@@ -302,6 +329,7 @@ async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
       doc.text('_________________________________')
       doc.text(`${process.env.MEDICO_NOME || 'Dr.'} ${process.env.MEDICO_SOBRENOME || 'Medico'}`)
       doc.text(`${process.env.MEDICO_CONSELHO || 'CRM'}/${process.env.MEDICO_UF || 'SP'} ${process.env.MEDICO_NUMERO || '123456'}`)
+      doc.text('Assinatura Digital')
       
       doc.moveDown()
       doc.fontSize(9).text('Receita válida por 30 dias. Venda sob prescrição médica.', { align: 'center' })
@@ -389,7 +417,6 @@ async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) 
   const pacienteCpf = decrypt(at.paciente_cpf)
   const pacienteTelefone = decrypt(at.paciente_telefone)
   
-  // Preparar medicamentos
   const medicamentos = prontuario?.medicamentos || []
   if (medicamentos.length === 0 && prontuario?.medicacao) {
     medicamentos.push({
@@ -401,7 +428,6 @@ async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) 
     })
   }
   
-  // Tentar Memed primeiro
   let memedSucesso = false
   let memedErro = null
   
@@ -425,7 +451,6 @@ async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) 
     }
   }
   
-  // FALLBACK: Gerar PDF próprio
   let pdfSucesso = false
   let pdfUrl = null
   
@@ -443,7 +468,6 @@ async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) 
     }
   }
   
-  // Registrar no atendimento
   at.receita_enviada_por = memedSucesso ? 'memed' : (pdfSucesso ? 'pdf_fallback' : 'nenhum')
   if (memedSucesso) at.receita_memed_id = 'enviado'
   if (pdfUrl) at.receita_pdf_url = pdfUrl
@@ -458,6 +482,63 @@ async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) 
     pdf_url: pdfUrl
   }
 }
+
+// ========================
+// ⚖️ DECISÃO MÉDICA (COM FALLBACK DO MEMED E HISTÓRICO)
+// ========================
+app.post('/api/decisao/:id', auth, async (req, res) => {
+  try {
+    const { decisao, orientacoes } = req.body
+    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    
+    await db.atualizarStatus(req.params.id, novoStatus)
+
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+
+    if (decisao === 'APROVAR') {
+      // 🔥 ENVIAR RECEITA COM FALLBACK
+      const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
+      
+      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      
+      if (resultado.metodo === 'memed') {
+        msg += `🔒 Receita digital enviada para seu WhatsApp/Email\n`
+      } else if (resultado.metodo === 'pdf_fallback') {
+        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
+      } else {
+        msg += `⚠️ Aguarde, a receita será enviada em breve.\n`
+      }
+      
+      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
+      
+      await enviarWhatsApp(telefone, msg)
+      
+      // ✅ ADICIONAR HISTÓRICO (parte que estava faltando)
+      at.decisao_historico = {
+        status: 'APROVADO',
+        data: new Date().toISOString(),
+        medico: req.user?.id || 'medico',
+        orientacoes,
+        receita_envio: resultado
+      }
+      await db.salvarAtendimento(at)
+      
+    } else {
+      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
+      msg += `\n\n🏥 Procure um atendimento presencial.`
+      
+      await enviarWhatsApp(telefone, msg)
+    }
+
+    res.json({ success: true, novoStatus })
+  } catch(e) {
+    console.error('❌ Erro na decisão:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
 
 // ========================
 // 🛡️ MIDDLEWARES
@@ -521,7 +602,13 @@ app.post('/api/webhook/triagem', async (req, res) => {
       elegivel,
       status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
       pagamento: false,
-      criado_em: new Date().toISOString()
+      criado_em: new Date().toISOString(),
+      pago_em: null,
+      em_atendimento_por: null,
+      em_atendimento_desde: null,
+      prioridade: 0,
+      tentativas_lock: 0,
+      locked_until: null
     }
 
     await db.salvarAtendimento(atendimento)
@@ -586,7 +673,6 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
     return res.status(400).send(`Webhook Error: ${err.message}`)
   }
 
-  // 🔥 PREVENIR PROCESSAMENTO DUPLICADO
   const eventId = event.id
   const eventType = event.type
 
@@ -641,7 +727,6 @@ app.post('/login', (req, res) => {
 // 📋 ROTAS DA FILA (COM LOCK)
 // ========================
 
-// Buscar próximo da fila (com lock automático)
 app.post('/api/fila/pegar-proximo', auth, async (req, res) => {
   try {
     const medicoId = req.body.medicoId || 'medico_principal'
@@ -674,7 +759,29 @@ app.post('/api/fila/pegar-proximo', auth, async (req, res) => {
   }
 })
 
-// Estatísticas da fila
+app.post('/api/fila/liberar/:id', auth, async (req, res) => {
+  try {
+    await db.liberarAtendimento(req.params.id)
+    res.json({ sucesso: true })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/fila/finalizar/:id', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (at) {
+      at.status = req.body.status
+      at.finalizado_em = new Date().toISOString()
+      await db.salvarAtendimento(at)
+    }
+    res.json({ sucesso: true })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 app.get('/api/fila/estatisticas', auth, async (req, res) => {
   try {
     const todos = await db.getAtendimentos()
@@ -685,12 +792,18 @@ app.get('/api/fila/estatisticas', auth, async (req, res) => {
       a.locked_until && new Date(a.locked_until) > new Date()
     )
     
+    const locksExpirados = todos.filter(a => 
+      a.status === 'EM_ATENDIMENTO' && 
+      a.locked_until && new Date(a.locked_until) < new Date()
+    )
+    
     res.json({
       total_fila: fila.length,
       em_atendimento: emAtendimento.length,
+      locks_expirados: locksExpirados.length,
+      tempo_medio_espera: calcularTempoMedioEspera(todos),
       proximos: fila.slice(0, 5).map(a => ({
         id: a.id.substring(0,8),
-        paciente_nome: decrypt(a.paciente_nome),
         espera_minutos: Math.floor((Date.now() - new Date(a.pago_em || a.criado_em)) / 60000)
       }))
     })
@@ -792,7 +905,6 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
     const nome = decrypt(at.paciente_nome)
 
     if (decisao === 'APROVAR') {
-      // 🔥 ENVIAR RECEITA COM FALLBACK
       const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
       
       let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
@@ -808,6 +920,15 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
       if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
       
       await enviarWhatsApp(telefone, msg)
+      
+      at.decisao_historico = {
+        status: 'APROVADO',
+        data: new Date().toISOString(),
+        medico: req.user?.id || 'medico',
+        orientacoes,
+        receita_envio: resultado
+      }
+      await db.salvarAtendimento(at)
       
     } else {
       let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
@@ -1134,7 +1255,7 @@ setInterval(()=>{if(token)carregarDados();},30000);
 app.post('/api/memed/cadastrar-prescritor', auth, async (req, res) => {
   try {
     if (!process.env.MEMED_API_KEY) {
-      return res.status(400).json({ error: 'Memed não configurado' });
+      return res.status(400).json({ error: 'Memed não configurado' })
     }
 
     const response = await axios.post(
@@ -1156,31 +1277,31 @@ app.post('/api/memed/cadastrar-prescritor', auth, async (req, res) => {
         },
         headers: { 'Content-Type': 'application/json' }
       }
-    );
+    )
 
-    const usuario = response.data.data;
-    console.log(`✅ Prescritor cadastrado na Memed: ${usuario.nome}`);
+    const usuario = response.data.data
+    console.log(`✅ Prescritor cadastrado na Memed: ${usuario.nome}`)
 
     res.json({
       success: true,
       message: 'Prescritor cadastrado com sucesso',
       token: usuario.token,
       medico: { id: usuario.id, nome: usuario.nome, crm: usuario.crm }
-    });
+    })
   } catch(e) {
-    console.error('❌ Erro ao cadastrar prescritor:', e.response?.data || e.message);
-    res.status(500).json({ error: e.message });
+    console.error('❌ Erro ao cadastrar prescritor:', e.response?.data || e.message)
+    res.status(500).json({ error: e.message })
   }
-});
+})
 
 // 2. OBTER TOKEN DO PRESCRITOR (BUSCAR POR CPF)
 app.get('/api/memed/token-prescritor', auth, async (req, res) => {
   try {
     if (!process.env.MEMED_API_KEY) {
-      return res.status(400).json({ error: 'Memed não configurado' });
+      return res.status(400).json({ error: 'Memed não configurado' })
     }
 
-    const identificador = process.env.MEDICO_CPF; // CPF sem pontos ou traços
+    const identificador = process.env.MEDICO_CPF
 
     const response = await axios.get(
       `${process.env.MEMED_API_URL}/sinapse-prescricao/usuarios/${identificador}`,
@@ -1191,53 +1312,51 @@ app.get('/api/memed/token-prescritor', auth, async (req, res) => {
         },
         headers: { 'Accept': 'application/vnd.api+json' }
       }
-    );
+    )
 
-    const usuario = response.data.data;
-    console.log(`✅ Token do prescritor obtido: ${usuario.token?.substring(0, 20)}...`);
+    const usuario = response.data.data
+    console.log(`✅ Token do prescritor obtido: ${usuario.token?.substring(0, 20)}...`)
 
     res.json({
       success: true,
       token: usuario.token,
       expira_em: usuario.token_expires_at,
       medico: { nome: usuario.nome, crm: usuario.crm, uf: usuario.uf }
-    });
+    })
   } catch(e) {
-    console.error('❌ Erro ao obter token:', e.response?.data || e.message);
+    console.error('❌ Erro ao obter token:', e.response?.data || e.message)
     
     if (e.response?.status === 404) {
-      res.status(404).json({ error: 'Prescritor não encontrado', acao: 'cadastrar' });
+      res.status(404).json({ error: 'Prescritor não encontrado', acao: 'cadastrar' })
     } else {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message })
     }
   }
-});
+})
 
 // 3. RECEBER EVENTO DE PRESCRIÇÃO GERADA (WEBHOOK DO FRONTEND)
 app.post('/api/memed/prescricao-gerada', auth, async (req, res) => {
   try {
-    const { prescricaoId, paciente, medicamentos, documento } = req.body;
+    const { prescricaoId, paciente, medicamentos, documento } = req.body
     
-    console.log(`📋 Prescrição Memed recebida: ${prescricaoId}`);
+    console.log(`📋 Prescrição Memed recebida: ${prescricaoId}`)
     
-    // Buscar o PDF da receita
-    const pdfFile = documento?.find(doc => doc.type === 'full');
+    const pdfFile = documento?.find(doc => doc.type === 'full')
     
-    // Enviar WhatsApp com a receita
     const msg = `✅ Olá ${paciente.nome}!\n\n` +
                 `Sua receita foi gerada com sucesso!\n\n` +
                 `📋 Número: ${prescricaoId}\n` +
                 `💊 Medicamentos:\n${medicamentos?.map(m => `- ${m.nome}`).join('\n') || 'Conforme prescrição'}\n\n` +
-                `💊 Doctor Prescreve - Cuide da sua saúde!`;
+                `💊 Doctor Prescreve - Cuide da sua saúde!`
     
-    await enviarWhatsApp(paciente.telefone, msg);
+    await enviarWhatsApp(paciente.telefone, msg)
     
-    res.json({ success: true });
+    res.json({ success: true })
   } catch(e) {
-    console.error('❌ Erro ao processar prescrição gerada:', e);
-    res.status(500).json({ error: e.message });
+    console.error('❌ Erro ao processar prescrição gerada:', e)
+    res.status(500).json({ error: e.message })
   }
-});
+})
 
 // ========================
 // PÁGINAS PÚBLICAS
