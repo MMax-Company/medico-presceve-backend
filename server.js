@@ -543,6 +543,10 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
 // ========================
 // 🛡️ MIDDLEWARES
 // ========================
+
+// 🔥 Configurar trust proxy (resolve aviso do rate limit)
+app.set('trust proxy', 1)
+
 app.use(cors())
 app.use(express.json())
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
