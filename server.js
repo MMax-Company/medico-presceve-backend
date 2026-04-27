@@ -852,24 +852,52 @@ app.get('/api/fila/estatisticas', auth, async (req, res) => {
 // ========================
 // 📋 ROTAS PROTEGIDAS
 // ========================
+app.get('/api/pacientes', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT 
+        id,
+        paciente_nome,
+        paciente_telefone,
+        paciente_email,
+        paciente_nascimento,
+        doencas,
+        medicamento,
+        medicamento2,
+        tempo_uso,
+        status,
+        pagamento,
+        criado_em
+      FROM atendimentos
+      ORDER BY criado_em DESC
+    `)
 
-app.get('/api/atendimentos', auth, async (req, res) => {
-  const list = await db.getAtendimentos()
-  res.json(list.map(a => ({ 
-    ...a, 
-    paciente_nome: decrypt(a.paciente_nome), 
-    paciente_telefone: decrypt(a.paciente_telefone), 
-    doencas: decrypt(a.doencas) 
-  })))
+    res.json(rows.map(r => ({
+      ...r,
+      paciente_nome: decrypt(r.paciente_nome),
+      paciente_telefone: decrypt(r.paciente_telefone),
+      paciente_email: decrypt(r.paciente_email),
+      paciente_nascimento: decrypt(r.paciente_nascimento),
+      doencas: decrypt(r.doencas),
+      medicamento: decrypt(r.medicamento),
+      medicamento2: decrypt(r.medicamento2),
+      tempo_uso: decrypt(r.tempo_uso)
+    })))
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 app.get('/api/estatisticas', auth, async (req, res) => {
-  const a = await db.getAtendimentos()
+  const { rows } = await pool.query(`
+    SELECT status, pagamento FROM atendimentos
+  `)
+
   res.json({
-    total: a.length,
-    naFila: a.filter(x => x.pagamento && x.status === 'FILA').length,
-    aprovados: a.filter(x => x.status === 'APROVADO').length,
-    recusados: a.filter(x => x.status === 'RECUSADO').length
+    total: rows.length,
+    naFila: rows.filter(x => x.status === 'AGUARDANDO_PAGAMENTO').length,
+    aprovados: rows.filter(x => x.status === 'AGUARDANDO_PAGAMENTO').length,
+    recusados: rows.filter(x => x.status === 'INELEGIVEL').length
   })
 })
 
