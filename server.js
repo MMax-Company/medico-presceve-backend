@@ -597,27 +597,34 @@ if (Array.isArray(triagem.doencas)) {
 const doencasElegiveis = ['has', 'diabetes', 'hipertensão', 'pressão', 'hipotireoidismo', 'dislipidemia']
 const elegivel = doencasElegiveis.some(d => texto.includes(d))
 
-    const atendimento = {
-      id,
-      paciente_nome: encrypt(paciente.nome),
-      paciente_telefone: encrypt(paciente.telefone || ''),
-      paciente_cpf: encrypt(paciente.cpf || ''),
-      paciente_email: encrypt(paciente.email || ''),
-      paciente_nascimento: encrypt(paciente.data_nascimento || ''),
-      doencas: encrypt(texto),
-      elegivel,
-      status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
-      pagamento: false,
-      criado_em: new Date().toISOString(),
-      pago_em: null,
-      em_atendimento_por: null,
-      em_atendimento_desde: null,
-      prioridade: 0,
-      tentativas_lock: 0,
-      locked_until: null
-    }
+const atendimento = {
+  id,
+  paciente_nome: encrypt(paciente.nome),
+  paciente_telefone: encrypt(paciente.telefone || ''),
+  paciente_cpf: encrypt(paciente.cpf || ''),
+  paciente_email: encrypt(paciente.email || ''),
+  paciente_nascimento: encrypt(paciente.data_nascimento || ''),
+  doencas: encrypt(texto),
+  
+  // 🔥 NOVOS CAMPOS - DADOS DA TRIAGEM
+  medicamento: encrypt(triagem.medicamento || ''),
+  medicamento2: encrypt(triagem.medicamento2 || ''),
+  tempo_uso: encrypt(triagem.tempoUso || ''),
+  sinais_alerta: encrypt(String(triagem.sinaisAlerta || '')),
+  
+  elegivel,
+  status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
+  pagamento: false,
+  criado_em: new Date().toISOString(),
+  pago_em: null,
+  em_atendimento_por: null,
+  em_atendimento_desde: null,
+  prioridade: 0,
+  tentativas_lock: 0,
+  locked_until: null
+}
 
-    await db.salvarAtendimento(atendimento)
+await db.salvarAtendimento(atendimento)
 
     if (elegivel) {
       const url = `${BASE_URL}/api/payment/${id}`
@@ -897,7 +904,7 @@ app.post('/api/receita/:id', auth, async (req, res) => {
 })
 
 // ========================
-// 📋 PRONTUÁRIO DO PACIENTE
+// 📋 PRONTUÁRIO DO PACIENTE (COM PRÉ-PREENCHIMENTO COMPLETO)
 // ========================
 app.get('/prontuario/:id', auth, async (req, res) => {
   try {
@@ -906,12 +913,29 @@ app.get('/prontuario/:id', auth, async (req, res) => {
       return res.status(404).send('Prontuário não encontrado')
     }
 
+    // ========================
+    // 🔓 DESCRIPTOGRAFAR DADOS DO PACIENTE
+    // ========================
     const pacienteNome = decrypt(at.paciente_nome) || ''
     const pacienteTelefone = decrypt(at.paciente_telefone) || ''
     const pacienteCpf = decrypt(at.paciente_cpf) || ''
     const pacienteEmail = decrypt(at.paciente_email) || ''
     const pacienteNascimento = decrypt(at.paciente_nascimento) || ''
     const doencas = decrypt(at.doencas) || ''
+    
+    // ========================
+    // 🔥 NOVO: BUSCAR DADOS DA TRIAGEM
+    // ========================
+    const medicamento = decrypt(at.medicamento) || ''
+    const medicamento2 = decrypt(at.medicamento2) || ''
+    const tempoUso = decrypt(at.tempo_uso) || ''
+    const sinaisAlerta = decrypt(at.sinais_alerta) || ''
+    
+    // Juntar medicamentos em uma única string para exibir
+    let medicacaoCompleta = medicamento
+    if (medicamento2) {
+      medicacaoCompleta += medicamentoCompleta ? `, ${medicamento2}` : medicamento2
+    }
     
     const prontuario = at.prontuario || {}
     
@@ -973,8 +997,8 @@ app.get('/prontuario/:id', auth, async (req, res) => {
                 <div class="section-title">🏥 Condição Clínica</div>
                 <div class="form-grid">
                     <div class="form-group full-width"><label>DOENÇAS <span class="badge-chatbot">Chatbot</span></label><input type="text" id="doencas" value="${prontuario.doencas || doencas.replace(/[<>]/g, '')}"></div>
-                    <div class="form-group full-width"><label>MEDICAÇÃO EM USO</label><textarea id="medicacao" rows="2">${prontuario.medicacao || ''}</textarea></div>
-                    <div class="form-group"><label>TEMPO DE USO</label><input type="text" id="tempoUso" value="${prontuario.tempoUso || ''}"></div>
+                    <div class="form-group full-width"><label>MEDICAÇÃO EM USO <span class="badge-chatbot">Chatbot</span></label><textarea id="medicacao" rows="2">${prontuario.medicacao || medicacaoCompleta}</textarea></div>
+                    <div class="form-group"><label>TEMPO DE USO <span class="badge-chatbot">Chatbot</span></label><input type="text" id="tempoUso" value="${prontuario.tempoUso || tempoUso}"></div>
                     <div class="form-group"><label>VALIDADE DA RECEITA</label><input type="date" id="validadeReceita" value="${prontuario.validadeReceita || ''}"></div>
                 </div>
             </div>
