@@ -836,6 +836,7 @@ app.get('/api/fila/estatisticas', auth, async (req, res) => {
 // ========================
 // 📋 ROTAS PROTEGIDAS
 // ========================
+
 app.get('/api/atendimentos', auth, async (req, res) => {
   const list = await db.getAtendimentos()
   res.json(list.map(a => ({ 
@@ -866,6 +867,62 @@ app.get('/api/atendimento/:id', auth, async (req, res) => {
     paciente_cpf: decrypt(at.paciente_cpf),
     doencas: decrypt(at.doencas) 
   })
+})
+
+// ========================
+// 📞 ROTAS DE SUPORTE (ADICIONAR)
+// ========================
+
+// Banco simples em memória para suportes pendentes
+const suportesPendentes = {}
+
+// Rota para registrar pedido de suporte (chamada pelo n8n)
+app.post('/api/suporte/solicitar', async (req, res) => {
+  try {
+    const { telefone, nome, mensagem } = req.body
+    const id = Math.random().toString(36).substring(2, 10)
+    
+    suportesPendentes[id] = {
+      id,
+      telefone,
+      nome: nome || 'Paciente',
+      mensagem: mensagem || 'Aguardando atendimento',
+      status: 'PENDENTE',
+      criado_em: new Date().toISOString()
+    }
+    
+    console.log(`📞 NOVO SUPORTE: ${nome} (${telefone})`)
+    res.json({ success: true, id })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Rota para listar suportes pendentes (chamada pelo painel)
+app.get('/api/suporte/pendentes', auth, async (req, res) => {
+  const pendentes = Object.values(suportesPendentes).filter(s => s.status === 'PENDENTE')
+  res.json(pendentes)
+})
+
+// Rota para marcar como atendido
+app.post('/api/suporte/atender/:id', auth, async (req, res) => {
+  const { id } = req.params
+  if (suportesPendentes[id]) {
+    suportesPendentes[id].status = 'ATENDIDO'
+    suportesPendentes[id].atendido_em = new Date().toISOString()
+  }
+  res.json({ success: true })
+})
+
+// Rota para enviar WhatsApp (usada pelo painel)
+app.post('/api/enviar-whatsapp', auth, async (req, res) => {
+  try {
+    const { telefone, mensagem } = req.body
+    await enviarWhatsApp(telefone, mensagem)
+    res.json({ success: true })
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // ========================
@@ -1076,7 +1133,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
 })
 
 // ========================
-// 🏥 PAINEL MÉDICO (COM LOGIN BONITO)
+// 🏥 PAINEL MÉDICO (COM LOGIN BONITO + SUPORTE)
 // ========================
 app.get('/painel-medico', (req, res) => {
   res.send(`<!DOCTYPE html>
@@ -1115,7 +1172,60 @@ app.get('/painel-medico', (req, res) => {
         .btn-aprovar{background:#28a745;color:#fff}
         .btn-recusar{background:#dc3545;color:#fff}
         .btn-pegar{background:#ffc107;color:#333}
+        .btn-atender{background:#ffc107;color:#333}
         .empty-state{text-align:center;padding:40px;color:#999}
+        
+        /* Estilos para a seção de suporte */
+        .suporte-section {
+            background: #fff;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .suporte-section h3 {
+            color: #1a6b8a;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .suporte-card {
+            background: #f8f9fa;
+            border-left: 4px solid #ffc107;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .suporte-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .suporte-nome {
+            font-weight: bold;
+            color: #333;
+        }
+        .suporte-telefone {
+            color: #666;
+            font-size: 12px;
+        }
+        .suporte-mensagem {
+            background: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .suporte-tempo {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+        .suporte-actions {
+            display: flex;
+            gap: 10px;
+        }
         @media(max-width:900px){.columns{flex-direction:column}.column{min-width:auto}}
     </style>
 </head>
@@ -1131,6 +1241,13 @@ app.get('/painel-medico', (req, res) => {
 <div id="painelArea" class="painel-container">
     <div class="header"><h1>📊 Doctor Prescreve - Painel Médico</h1><button class="logout-btn" onclick="logout()">Sair</button></div>
     <div class="stats" id="stats">Carregando...</div>
+    
+    <!-- NOVA SEÇÃO: SUPORTE -->
+    <div class="suporte-section">
+        <h3>📞 CHAMADOS DE SUPORTE</h3>
+        <div id="suportesPendentes">Carregando...</div>
+    </div>
+    
     <div class="columns">
         <div class="column"><h3>⏳ FILA</h3><div id="filaColuna"><div class="empty-state">Carregando...</div></div></div>
         <div class="column"><h3>📋 EM ATENDIMENTO</h3><div id="atendimentoColuna"><div class="empty-state">Carregando...</div></div></div>
@@ -1140,6 +1257,7 @@ app.get('/painel-medico', (req, res) => {
 <script>
 let token=localStorage.getItem('token');
 let dadosAtendimentos=[];
+
 async function fazerLogin(){
 const senha=document.getElementById('senhaInput').value;
 const erroMsg=document.getElementById('erroMsg');
@@ -1153,11 +1271,13 @@ localStorage.setItem('token',token);
 document.getElementById('loginArea').style.display='none';
 document.getElementById('painelArea').style.display='block';
 carregarDados();
+carregarSuportes();
 erroMsg.style.display='none';
 }else{erroMsg.style.display='block';}
 }catch(e){erroMsg.style.display='block';}
 }
 function logout(){token='';localStorage.removeItem('token');document.getElementById('loginArea').style.display='flex';document.getElementById('painelArea').style.display='none';document.getElementById('senhaInput').value='';}
+
 async function carregarDados(){
 if(!token)return;
 try{
@@ -1169,6 +1289,52 @@ document.getElementById('stats').innerHTML='<div class="stat-card"><div class="s
 renderizarColunas();
 }catch(e){console.error(e);}
 }
+
+// NOVA FUNÇÃO: Carregar suportes pendentes
+async function carregarSuportes(){
+try{
+const res=await fetch('/api/suporte/pendentes',{headers:{'Authorization':'Bearer '+token}});
+const suportes=await res.json();
+let html='';
+if(suportes.length===0){
+html='<div class="empty-state">📭 Nenhum chamado pendente</div>';
+}else{
+suportes.forEach(s=>{
+html+='<div class="suporte-card" data-id="'+s.id+'">'+
+'<div class="suporte-header">'+
+'<span class="suporte-nome">👤 '+(s.nome||'Paciente')+'</span>'+
+'<span class="suporte-telefone">📱 '+s.telefone+'</span>'+
+'</div>'+
+'<div class="suporte-mensagem">💬 '+(s.mensagem||'Aguardando atendimento')+'</div>'+
+'<div class="suporte-tempo">⏱️ Há '+formatarTempo(s.criado_em)+'</div>'+
+'<div class="suporte-actions">'+
+'<button class="btn btn-atender" onclick="atenderSuporte(\\''+s.id+'\\',\\''+s.telefone+'\\',\\''+(s.nome||'Paciente')+'\\')">✓ Atender</button>'+
+'</div>'+
+'</div>';
+});
+}
+document.getElementById('suportesPendentes').innerHTML=html;
+}catch(e){console.error(e);}
+}
+
+// NOVA FUNÇÃO: Atender suporte
+async function atenderSuporte(id, telefone, nome){
+if(!confirm('Atender '+nome+'? O paciente será notificado.'))return;
+try{
+await fetch('/api/suporte/atender/'+id,{method:'POST',headers:{'Authorization':'Bearer '+token}});
+await fetch('/api/enviar-whatsapp',{
+method:'POST',
+headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+body:JSON.stringify({
+telefone:telefone,
+mensagem:'👨‍⚕️ Olá! Em breve um atendente irá falar com você.'
+})
+});
+alert('✅ Paciente notificado!');
+carregarSuportes();
+}catch(e){alert('Erro: '+e.message);}
+}
+
 function formatarTempo(dataCriacao){
 if(!dataCriacao)return'agora';
 const criado=new Date(dataCriacao);
@@ -1222,13 +1388,13 @@ if(res.ok){alert('❌ Consulta recusada!');carregarDados();}
 else{alert('❌ Erro ao recusar');}
 }catch(e){alert('Erro: '+e.message);}
 }
-if(token){document.getElementById('loginArea').style.display='none';document.getElementById('painelArea').style.display='block';carregarDados();}
-setInterval(()=>{if(token)carregarDados();},30000);
+if(token){document.getElementById('loginArea').style.display='none';document.getElementById('painelArea').style.display='block';carregarDados();carregarSuportes();}
+setInterval(()=>{if(token){carregarDados();carregarSuportes();}},30000);
 </script>
 </body>
 </html>
   `);
-})  
+})
 
 // ========================
 // 🔗 MEMED - ROTAS DE INTEGRAÇÃO
