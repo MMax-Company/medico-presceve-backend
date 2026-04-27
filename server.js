@@ -564,22 +564,6 @@ app.get('/receita-pdf/:id', async (req, res) => {
 })
 
 // ========================
-// 🔐 AUTH
-// ========================
-const gerarToken = () => jwt.sign({ role: 'medico' }, process.env.JWT_SECRET, { expiresIn: '8h' })
-
-function auth(req, res, next) {
-  try {
-    const token = req.headers.authorization?.split(' ')[1]
-    if (!token) throw new Error('Token ausente')
-    jwt.verify(token, process.env.JWT_SECRET)
-    next()
-  } catch(e) {
-    return res.status(401).json({ error: 'Não autorizado' })
-  }
-}
-
-// ========================
 // 🧠 TRIAGEM
 // ========================
 app.post('/api/webhook/triagem', async (req, res) => {
@@ -1000,7 +984,7 @@ app.post('/api/receita/:id', auth, async (req, res) => {
 // ========================
 // 📋 PRONTUÁRIO DO PACIENTE (COM PRÉ-PREENCHIMENTO COMPLETO)
 // ========================
-app.get('/prontuario/:id', auth, async (req, res) => {
+app.get('/prontuario/:id', async (req, res) => {
   try {
     const at = await db.buscarAtendimentoPorId(req.params.id)
     if (!at) {
