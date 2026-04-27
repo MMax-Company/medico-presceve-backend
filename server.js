@@ -279,143 +279,76 @@ app.get('/api/estatisticas',auth,(req,res)=>{
 // ========================
 // 🏥 PAINEL
 // ========================
-app.get('/painel-medico',(req,res)=>{
-res.send(`<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Painel Médico</title>
-<style>
-body{font-family:Arial;background:#f4f6f9;margin:0;padding:20px}
-.ainer{max-width:1000px;margin:auto}
-.card{background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
-h1{margin-top:0}
-input{padding:10px;width:200px}
-button{padding:8px 12px;margin:5px;border:none;border-radius:6px;cursor:pointer}
-.btn-primary{background:#007bff;color:#fff}
-.btn-danger{background:#dc3545;color:#fff}
-.btn-info{background:#17a2b8;color:#fff}
-table{width:100%;border-collapse:collapse;margin-top:20px}
-th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}
-.badge{padding:5px 8px;border-radius:6px;font-size:12px}
-.fila{background:#ffc107}
-.aprovado{background:#28a745;color:#fff}
-.recusado{background:#dc3545;color:#fff}
-</style>
-</head>
-
+app.get('/painel-medico', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html>
 <body>
-<div class="ainer">
 
-<div id="login" class="card">
-<h2>Login Médico</h2>
-<input id="senha" type="password" placeholder="Senha">
-<button class="btn-primary" onclick="window.login()">Entrar</button>
-</div>
+<input id="senha" placeholder="senha">
+<button onclick="window.login()">Entrar</button>
 
-<div id="painel" class="card" style="display:none">
-<h1>Painel Médico</h1>
-
-<div id="stats"></div>
-
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>Paciente</th>
-<th>Status</th>
-<th>Ações</th>
-</tr>
-</thead>
-<tbody id="lista"></tbody>
-</table>
-
-</div>
+<div id="painel" style="display:none">
+  <h3>Painel Médico</h3>
+  <div id="stats"></div>
+  <div id="lista"></div>
 </div>
 
 <script>
 let token=''
 
-window.login=async function(){
- const res=await fetch('/login',{
-  method:'POST',
-  headers:{'ent-Type':'application/json'},
-  body:JSON.stringify({senha:senha.value})
- })
- const d=await res.json()
- token=d.token
-
- document.getElementById('login').style.display='none'
- document.getElementById('painel').style.display='block'
-
- load()
+window.login = async function(){
+  const res = await fetch('/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({senha:document.getElementById('senha').value})
+  })
+  const d = await res.json()
+  token = d.token
+  document.getElementById('painel').style.display='block'
+  load()
 }
 
 async function load(){
+  const s = await fetch('/api/estatisticas',{headers:{Authorization:'Bearer '+token}})
+  const stats = await s.json()
 
- const s=await fetch('/api/estatisticas',{headers:{Authorization:'Bearer '+token}})
- const stats=await s.json()
+  document.getElementById('stats').innerHTML =
+    'Total:'+stats.total+' | Fila:'+stats.fila+' | Aprovados:'+stats.aprovados
 
- document.getElementById('stats').innerHTML =
- \`<b>Total:</b> \${stats.total} | 
-  <b>Fila:</b> \${stats.fila} | 
-  <b>Aprovados:</b> \${stats.aprovados} | 
-  <b>Recusados:</b> \${stats.recusados}\`
+  const res = await fetch('/api/atendimentos',{headers:{Authorization:'Bearer '+token}})
+  const dados = await res.json()
 
- const res=await fetch('/api/atendimentos',{headers:{Authorization:'Bearer '+token}})
- const dados=await res.json()
+  let html=''
+  dados.forEach(a=>{
+    html += '<div>'+a.id+
+      ' <button onclick="window.aprovar(&quot;'+a.id+'&quot;)">Aprovar</button>'+
+      ' <button onclick="window.recusar(&quot;'+a.id+'&quot;)">Recusar</button></div>'
+  })
 
- let html=''
-
- dados.forEach(a=>{
-
- let badge='fila'
- if(a.status==='APROVADO') badge='aprovado'
- if(a.status==='RECUSADO') badge='recusado'
-
- html+=\`
- <tr>
-   <td>\${a.id.substring(0,6)}</td>
-   <td>\${a.paciente_nome || 'N/A'}</td>
-   <td><span class="badge \${badge}">\${a.status}</span></td>
-   <td>
-     <button class="btn-info" onclick="verDetalhes('\${a.id}')">Ver</button>
-     <button class="btn-primary" onclick="aprovar('\${a.id}')">Aprovar</button>
-     <button class="btn-danger" onclick="recusar('\${a.id}')">Recusar</button>
-   </td>
- </tr>
- \`
- })
-
- document.getElementById('lista').innerHTML=html
+  document.getElementById('lista').innerHTML = html
 }
 
-window.verDetalhes=function(id){
- alert('ID: '+id)
+window.aprovar = async function(id){
+  await fetch('/api/decisao/'+id,{
+    method:'POST',
+    headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+    body:JSON.stringify({decisao:'APROVAR'})
+  })
+  load()
 }
 
-window.aprovar=async function(id){
- await fetch('/api/decisao/'+id,{
-  method:'POST',
-  headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
-  body:JSON.stringify({decisao:'APROVAR'})
- })
- load()
-}
-
-window.recusar=async function(id){
- await fetch('/api/decisao/'+id,{
-  method:'POST',
-  headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
-  body:JSON.stringify({decisao:'RECUSAR'})
- })
- load()
+window.recusar = async function(id){
+  await fetch('/api/decisao/'+id,{
+    method:'POST',
+    headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+    body:JSON.stringify({decisao:'RECUSAR'})
+  })
+  load()
 }
 </script>
 
 </body>
-</html>
-`)
+</html>`)
 })
 
 <input id="senha" placeholder="senha">
