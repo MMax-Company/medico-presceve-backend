@@ -775,25 +775,42 @@ app.get('/painel-medico', (req, res) => {
                 else if (a.status === 'FILA') statusClass = 'status-fila'
                 else if (a.status === 'INELEGIVEL') statusClass = 'status-inelegivel'
 
-                html += '<tr>' +
-                    '<td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">' + a.id.substring(0, 8) + '</code></td>' +
-                    '<td><strong>' + (a.paciente_nome || 'N/A') + '</strong></td>' +
-                    '<td>' + (a.doencas || 'N/A') + '</td>' +
-                    '<td><span class="status-badge ' + statusClass + '">' + (a.status || 'PENDENTE') + '</span></td>' +
-                    '<td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
-                    `<td><button class="btn btn-info" onclick="verDetalhes('${a.id}')">📋 Ver</button>`
-                if (a.status === 'FILA') {
-                html += ` <button class="btn btn-primary" onclick="aprovar('${a.id}')">✅ Aprovar</button>
-                          <button class="btn btn-danger" onclick="recusar('${a.id}')">❌ Recusar</button>
-`
-                }
-                html += '</td></tr>'
-            }
-            html += '</tbody></table>'
-            document.getElementById('atendimentos').innerHTML = html
-        }
+html += `
+<tr>
+  <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">
+    ${a.id.substring(0, 8)}
+  </code></td>
 
-        async function verDetalhes(id) {
+  <td><strong>${a.paciente_nome || 'N/A'}</strong></td>
+  <td>${a.doencas || 'N/A'}</td>
+
+  <td>
+    <span class="status-badge ${statusClass}">
+      ${a.status || 'PENDENTE'}
+    </span>
+  </td>
+
+  <td>${a.pagamento ? '✅ Pago' : '⏳ Pendente'}</td>
+
+  <td>
+    <button class="btn btn-info" onclick="verDetalhes('${a.id}')">📋 Ver</button>
+`
+
+if (a.status === 'FILA') {
+  html += `
+    <button class="btn btn-primary" onclick="aprovar('${a.id}')">✅ Aprovar</button>
+    <button class="btn btn-danger" onclick="recusar('${a.id}')">❌ Recusar</button>
+  `
+}
+
+html += `
+  </td>
+</tr>
+`
+
+}
+
+async function verDetalhes(id) {
             try {
                 const res = await fetch(API_URL + '/api/atendimento/' + id, {
                     headers: { 'Authorization': 'Bearer ' + token }
