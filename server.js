@@ -564,22 +564,6 @@ app.get('/receita-pdf/:id', async (req, res) => {
 })
 
 // ========================
-// 🔐 AUTH
-// ========================
-const gerarToken = () => jwt.sign({ role: 'medico' }, process.env.JWT_SECRET, { expiresIn: '8h' })
-
-function auth(req, res, next) {
-  try {
-    const token = req.headers.authorization?.split(' ')[1]
-    if (!token) throw new Error('Token ausente')
-    jwt.verify(token, process.env.JWT_SECRET)
-    next()
-  } catch(e) {
-    return res.status(401).json({ error: 'Não autorizado' })
-  }
-}
-
-// ========================
 // 🧠 TRIAGEM
 // ========================
 app.post('/api/webhook/triagem', async (req, res) => {
@@ -987,9 +971,9 @@ app.post('/api/teste/simular-pagamento/:id', auth, async (req, res) => {
 })
 
 // ========================
-// 💾 SALVAR PRONTUÁRIO
+// 💾 SALVAR PRONTUÁRIO (SEM AUTENTICAÇÃO)
 // ========================
-app.post('/api/salvar-prontuario/:id', auth, async (req, res) => {
+app.post('/api/salvar-prontuario/:id', async (req, res) => {
   try {
     const { id } = req.params
     const dadosProntuario = req.body
@@ -1032,7 +1016,7 @@ app.post('/api/receita/:id', auth, async (req, res) => {
 // ========================
 // 📋 PRONTUÁRIO DO PACIENTE (COM PRÉ-PREENCHIMENTO COMPLETO)
 // ========================
-app.get('/prontuario/:id', auth, async (req, res) => {
+app.get('/prontuario/:id', async (req, res) => {
   try {
     const at = await db.buscarAtendimentoPorId(req.params.id)
     if (!at) {
@@ -1169,7 +1153,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
         try {
             const res = await fetch('/api/salvar-prontuario/' + atendimentoId, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dados)
             });
 
