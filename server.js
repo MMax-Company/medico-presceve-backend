@@ -1008,10 +1008,10 @@ app.get('/prontuario/:id', auth, async (req, res) => {
     const tempoUso = decrypt(at.tempo_uso) || ''
     const sinaisAlerta = decrypt(at.sinais_alerta) || ''
     
-    // Juntar medicamentos em uma única string para exibir
+    // Juntar medicamentos em uma única string para exibir - CORRIGIDO
     let medicacaoCompleta = medicamento
     if (medicamento2) {
-      medicacaoCompleta += medicamentoCompleta ? `, ${medicamento2}` : medicamento2
+      medicacaoCompleta += medicacaoCompleta ? `, ${medicamento2}` : medicamento2
     }
     
     const prontuario = at.prontuario || {}
@@ -1043,7 +1043,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
         .full-width { grid-column: span 2; }
         .badge-chatbot { font-size: 10px; background: #4caf50; color: white; padding: 2px 8px; border-radius: 12px; margin-left: 10px; }
         .orientacao-box { background: #fff8e1; border-left: 4px solid #ffc107; padding: 20px; border-radius: 12px; margin-top: 10px; }
-        .btn-salvar { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 20px; }
+        .btn-salvar { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; }
         .btn-salvar:hover { transform: translateY(-2px); }
         .btn-voltar { background: #6c757d; color: white; padding: 10px; border: none; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         .info-chatbot { background: #e3f2fd; border-radius: 8px; padding: 10px; margin-bottom: 15px; font-size: 13px; color: #1565c0; text-align: center; }
@@ -1086,7 +1086,7 @@ app.get('/prontuario/:id', auth, async (req, res) => {
                     <div class="form-group full-width"><label>QUEIXA PRINCIPAL</label><textarea id="queixa" rows="2">${prontuario.queixa || ''}</textarea></div>
                     <div class="form-group full-width"><label>HISTÓRIA CLÍNICA</label><textarea id="historia" rows="3">${prontuario.historia || ''}</textarea></div>
                     <div class="form-group full-width"><label>CONDUTA / PRESCRIÇÃO</label><textarea id="conduta" rows="3">${prontuario.conduta || ''}</textarea></div>
-                    <div class="form-group full-width orientacao-box"><label>📝 ORIENTAÇÕES MÉDICAS (OPCIONAL)</label><textarea id="orientacoes" rows="4" placeholder="Recomendações, alertas ou orientações para o paciente...">${prontuario.orientacoes || ''}</textarea></div>
+                    <div class="form-group full-width orientacao-box"><label>📝 ORIENTAÇÕES MÉDICAS (OPCIONAL)</label><textarea id="orientacoes" rows="4" placeholder="Recomendações, alertas ou observações adicionais">${prontuario.orientacoes || ''}</textarea></div>
                 </div>
             </div>
 
@@ -1157,7 +1157,7 @@ app.get('/painel-medico', (req, res) => {
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;padding:20px}
-        .login-container{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:center;background:linear-gradient(135deg,#1a6b8a 0%,#0d4f6b 100%);z-index:1000}
+        .login-container{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:center;background:linear-gradient(135deg,#1a6b8a 0%,#0d4f6b 100%);z-index:10}
         .login-card{background:#fff;border-radius:16px;padding:40px;width:100%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,0.2)}
         .login-card h2{color:#1a6b8a;text-align:center;margin-bottom:24px;font-size:24px}
         .login-card input{width:100%;padding:12px 16px;margin-bottom:20px;border:1px solid #ddd;border-radius:8px;font-size:16px}
@@ -1186,58 +1186,15 @@ app.get('/painel-medico', (req, res) => {
         .btn-pegar{background:#ffc107;color:#333}
         .btn-atender{background:#ffc107;color:#333}
         .empty-state{text-align:center;padding:40px;color:#999}
-        
-        /* Estilos para a seção de suporte */
-        .suporte-section {
-            background: #fff;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .suporte-section h3 {
-            color: #1a6b8a;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .suporte-card {
-            background: #f8f9fa;
-            border-left: 4px solid #ffc107;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-        .suporte-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        .suporte-nome {
-            font-weight: bold;
-            color: #333;
-        }
-        .suporte-telefone {
-            color: #666;
-            font-size: 12px;
-        }
-        .suporte-mensagem {
-            background: #fff;
-            padding: 10px;
-            border-radius: 8px;
-            margin: 10px 0;
-            font-size: 14px;
-        }
-        .suporte-tempo {
-            font-size: 11px;
-            color: #999;
-            margin-bottom: 10px;
-        }
-        .suporte-actions {
-            display: flex;
-            gap: 10px;
-        }
+        .suporte-section{background:#fff;border-radius:16px;padding:20px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+        .suporte-section h3{color:#1a6b8a;margin-bottom:15px;display:flex;align-items:center;gap:10px}
+        .suporte-card{background:#f8f9fa;border-left:4px solid #ffc107;border-radius:12px;padding:15px;margin-bottom:15px}
+        .suporte-header{display:flex;justify-content:space-between;margin-bottom:10px}
+        .suporte-nome{font-weight:bold;color:#333}
+        .suporte-telefone{color:#666;font-size:12px}
+        .suporte-mensagem{background:#fff;padding:10px;border-radius:8px;margin:10px 0;font-size:14px}
+        .suporte-tempo{font-size:11px;color:#999;margin-bottom:10px}
+        .suporte-actions{display:flex;gap:10px}
         @media(max-width:900px){.columns{flex-direction:column}.column{min-width:auto}}
     </style>
 </head>
@@ -1253,13 +1210,10 @@ app.get('/painel-medico', (req, res) => {
 <div id="painelArea" class="painel-container">
     <div class="header"><h1>📊 Doctor Prescreve - Painel Médico</h1><button class="logout-btn" onclick="logout()">Sair</button></div>
     <div class="stats" id="stats">Carregando...</div>
-    
-    <!-- NOVA SEÇÃO: SUPORTE -->
     <div class="suporte-section">
         <h3>📞 CHAMADOS DE SUPORTE</h3>
         <div id="suportesPendentes">Carregando...</div>
     </div>
-    
     <div class="columns">
         <div class="column"><h3>⏳ FILA</h3><div id="filaColuna"><div class="empty-state">Carregando...</div></div></div>
         <div class="column"><h3>📋 EM ATENDIMENTO</h3><div id="atendimentoColuna"><div class="empty-state">Carregando...</div></div></div>
@@ -1302,7 +1256,6 @@ renderizarColunas();
 }catch(e){console.error(e);}
 }
 
-// NOVA FUNÇÃO: Carregar suportes pendentes
 async function carregarSuportes(){
 try{
 const res=await fetch('/api/suporte/pendentes',{headers:{'Authorization':'Bearer '+token}});
@@ -1312,36 +1265,18 @@ if(suportes.length===0){
 html='<div class="empty-state">📭 Nenhum chamado pendente</div>';
 }else{
 suportes.forEach(s=>{
-html+='<div class="suporte-card" data-id="'+s.id+'">'+
-'<div class="suporte-header">'+
-'<span class="suporte-nome">👤 '+(s.nome||'Paciente')+'</span>'+
-'<span class="suporte-telefone">📱 '+s.telefone+'</span>'+
-'</div>'+
-'<div class="suporte-mensagem">💬 '+(s.mensagem||'Aguardando atendimento')+'</div>'+
-'<div class="suporte-tempo">⏱️ Há '+formatarTempo(s.criado_em)+'</div>'+
-'<div class="suporte-actions">'+
-'<button class="btn btn-atender" onclick="atenderSuporte(\\''+s.id+'\\',\\''+s.telefone+'\\',\\''+(s.nome||'Paciente')+'\\')">✓ Atender</button>'+
-'</div>'+
-'</div>';
+html+='<div class="suporte-card" data-id="'+s.id+'"><div class="suporte-header"><span class="suporte-nome">👤 '+(s.nome||'Paciente')+'</span><span class="suporte-telefone">📱 '+s.telefone+'</span></div><div class="suporte-mensagem">💬 '+(s.mensagem||'Aguardando atendimento')+'</div><div class="suporte-tempo">⏱️ Há '+formatarTempo(s.criado_em)+'</div><div class="suporte-actions"><button class="btn btn-atender" onclick="atenderSuporte(\\''+s.id+'\\',\\''+s.telefone+'\\',\\''+(s.nome||'Paciente')+'\\')">✓ Atender</button></div></div>';
 });
 }
 document.getElementById('suportesPendentes').innerHTML=html;
 }catch(e){console.error(e);}
 }
 
-// NOVA FUNÇÃO: Atender suporte
 async function atenderSuporte(id, telefone, nome){
 if(!confirm('Atender '+nome+'? O paciente será notificado.'))return;
 try{
 await fetch('/api/suporte/atender/'+id,{method:'POST',headers:{'Authorization':'Bearer '+token}});
-await fetch('/api/enviar-whatsapp',{
-method:'POST',
-headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-body:JSON.stringify({
-telefone:telefone,
-mensagem:'👨‍⚕️ Olá! Em breve um atendente irá falar com você.'
-})
-});
+await fetch('/api/enviar-whatsapp',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({telefone:telefone,mensagem:'👨‍⚕️ Olá! Em breve um atendente irá falar com você.'})});
 alert('✅ Paciente notificado!');
 carregarSuportes();
 }catch(e){alert('Erro: '+e.message);}
@@ -1362,15 +1297,18 @@ const emAtendimento=dadosAtendimentos.filter(a=>a.status==='EM_ATENDIMENTO');
 const aguardandoDecisao=dadosAtendimentos.filter(a=>a.status==='PRONTO_PARA_DECISAO');
 let filaHtml='';
 if(fila.length===0){filaHtml='<div class="empty-state">📭 Nenhum paciente na fila</div>';}
-else{fila.forEach(a=>{filaHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">⏱️ Há '+formatarTempo(a.pago_em||a.criado_em)+'</div><div class="card-actions"><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">📋 Abrir Prontuário</button><button class="btn btn-pegar" onclick="pegarProximo()">🎯 Pegar Próximo</button></div></div>';});}
+else{fila.forEach(a=>{filaHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">⏱️ Na fila há pouco</div><div class="card-actions"><button class="btn btn-pegar" onclick="pegarProximo()">Pegar Próximo</button></div></div>';});
+}
 document.getElementById('filaColuna').innerHTML=filaHtml;
 let atendimentoHtml='';
 if(emAtendimento.length===0){atendimentoHtml='<div class="empty-state">📋 Nenhum caso em atendimento</div>';}
-else{emAtendimento.forEach(a=>{atendimentoHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">🔒 Em análise</div><div class="card-actions"><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">✏️ Continuar</button></div></div>';});}
+else{emAtendimento.forEach(a=>{atendimentoHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">👨‍⚕️ Em atendimento</div><div class="card-actions"><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">Abrir Prontuário</button></div></div>';});
+}
 document.getElementById('atendimentoColuna').innerHTML=atendimentoHtml;
 let decisaoHtml='';
 if(aguardandoDecisao.length===0){decisaoHtml='<div class="empty-state">⚖️ Aguardando prontuários</div>';}
-else{aguardandoDecisao.forEach(a=>{decisaoHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">📋 Prontuário preenchido</div><div class="card-actions"><button class="btn btn-aprovar" onclick="aprovarConsulta(\\''+a.id+'\\')">✅ Aprovar</button><button class="btn btn-recusar" onclick="recusarConsulta(\\''+a.id+'\\')">❌ Recusar</button><button class="btn btn-prontuario" onclick="abrirProntuario(\\''+a.id+'\\')">📋 Ver Prontuário</button></div></div>';});}
+else{aguardandoDecisao.forEach(a=>{decisaoHtml+='<div class="card"><div class="card-id">ID: '+a.id.substring(0,8)+'</div><div class="card-name">'+(a.paciente_nome||'Paciente')+'</div><div class="card-time">📝 Pronto para decisão</div><div class="card-actions"><button class="btn btn-aprovar" onclick="aprovarConsulta(\\''+a.id+'\\')">✅ Aprovar</button><button class="btn btn-recusar" onclick="recusarConsulta(\\''+a.id+'\\')">❌ Recusar</button></div></div>';});
+}
 document.getElementById('decisaoColuna').innerHTML=decisaoHtml;
 }
 async function pegarProximo(){
