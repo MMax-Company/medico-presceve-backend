@@ -678,7 +678,7 @@ app.get('/painel-medico', (req, res) => {
         let dadosAtendimentos = []
         let filtroAtual = 'todos'
 
-        async function login() {
+        window.login = async function () {
             const senha = document.getElementById('senha').value
             if (!senha) return alert('Digite a senha!')
 
@@ -702,14 +702,14 @@ app.get('/painel-medico', (req, res) => {
             }
         }
 
-        function logout() {
+        window.logout = function ()
             token = ''
             document.getElementById('login').style.display = 'flex'
             document.getElementById('painel').style.display = 'none'
             document.getElementById('senha').value = ''
         }
 
-        async function carregarDados() {
+        window.carregarDados = async function ()
             await carregarEstatisticas()
             await carregarAtendimentos()
         }
@@ -781,10 +781,11 @@ app.get('/painel-medico', (req, res) => {
                     '<td>' + (a.doencas || 'N/A') + '</td>' +
                     '<td><span class="status-badge ' + statusClass + '">' + (a.status || 'PENDENTE') + '</span></td>' +
                     '<td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
-                    '<td><button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">📋 Ver</button>'
+                    `<td><button class="btn btn-info" onclick="verDetalhes('${a.id}')">📋 Ver</button>`
                 if (a.status === 'FILA') {
-                    html += '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">✅ Aprovar</button>' +
-                            '<button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">❌ Recusar</button>'
+                html += ` <button class="btn btn-primary" onclick="aprovar('${a.id}')">✅ Aprovar</button>
+                          <button class="btn btn-danger" onclick="recusar('${a.id}')">❌ Recusar</button>
+`
                 }
                 html += '</td></tr>'
             }
@@ -813,7 +814,7 @@ app.get('/painel-medico', (req, res) => {
             }
         }
 
-        async function aprovar(id) {
+        window.aprovar = async function ()
             if (!confirm('Aprovar este paciente?')) return
             try {
                 const res = await fetch(API_URL + '/api/decisao/' + id, {
@@ -834,7 +835,7 @@ app.get('/painel-medico', (req, res) => {
             }
         }
 
-        async function recusar(id) {
+        window.recusar = async function ()
             if (!confirm('Recusar este paciente?')) return
             try {
                 const res = await fetch(API_URL + '/api/decisao/' + id, {
