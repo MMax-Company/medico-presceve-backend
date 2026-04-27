@@ -757,127 +757,131 @@ app.get('/painel-medico', (req, res) => {
             renderizarAtendimentos()
         }
 
-        function renderizarAtendimentos() {
-            let filtrados = [...dadosAtendimentos]
-            if (filtroAtual === 'fila') {
-                filtrados = filtrados.filter(a => a.pagamento && a.status === 'FILA')
-            } else if (filtroAtual === 'aprovados') {
-                filtrados = filtrados.filter(a => a.status === 'APROVADO')
-            } else if (filtroAtual === 'recusados') {
-                filtrados = filtrados.filter(a => a.status === 'RECUSADO')
-            }
+  function renderizarAtendimentos() {
+    let filtrados = [...dadosAtendimentos]
 
-            if (filtrados.length === 0) {
-                document.getElementById('atendimentos').innerHTML = '<div style="text-align: center; padding: 40px;">Nenhum atendimento encontrado</div>'
-                return
-            }
+    if (filtroAtual === 'fila') {
+        filtrados = filtrados.filter(a => a.pagamento && a.status === 'FILA')
+    } else if (filtroAtual === 'aprovados') {
+        filtrados = filtrados.filter(a => a.status === 'APROVADO')
+    } else if (filtroAtual === 'recusados') {
+        filtrados = filtrados.filter(a => a.status === 'RECUSADO')
+    }
 
-            let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>'
-            for (const a of filtrados) {
-                let statusClass = ''
-                if (a.status === 'APROVADO') statusClass = 'status-aprovado'
-                else if (a.status === 'RECUSADO') statusClass = 'status-recusado'
-                else if (a.status === 'FILA') statusClass = 'status-fila'
-                else if (a.status === 'INELEGIVEL') statusClass = 'status-inelegivel'
+    if (filtrados.length === 0) {
+        document.getElementById('atendimentos').innerHTML = '<div style="text-align: center; padding: 40px;">Nenhum atendimento encontrado</div>'
+        return
+    }
 
-html += `
-<tr>
-  <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">
-    ${a.id.substring(0, 8)}
-  </code></td>
+    let html = '<table><thead><tr><th>ID</th><th>Paciente</th><th>Doença</th><th>Status</th><th>Pagamento</th><th>Ações</th></tr></thead><tbody>'
 
-  <td><strong>${a.paciente_nome || 'N/A'}</strong></td>
-  <td>${a.doencas || 'N/A'}</td>
+    for (const a of filtrados) {
+        let statusClass = ''
+        if (a.status === 'APROVADO') statusClass = 'status-aprovado'
+        else if (a.status === 'RECUSADO') statusClass = 'status-recusado'
+        else if (a.status === 'FILA') statusClass = 'status-fila'
+        else if (a.status === 'INELEGIVEL') statusClass = 'status-inelegivel'
 
-  <td>
-    <span class="status-badge ${statusClass}">
-      ${a.status || 'PENDENTE'}
-    </span>
-  </td>
+        html += `
+        <tr>
+          <td><code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">
+            ${a.id.substring(0, 8)}
+          </code></td>
 
-  <td>${a.pagamento ? '✅ Pago' : '⏳ Pendente'}</td>
+          <td><strong>${a.paciente_nome || 'N/A'}</strong></td>
+          <td>${a.doencas || 'N/A'}</td>
 
-  <td>
-    <button class="btn btn-info" onclick="verDetalhes('${a.id}')">📋 Ver</button>
-`
+          <td>
+            <span class="status-badge ${statusClass}">
+              ${a.status || 'PENDENTE'}
+            </span>
+          </td>
 
-if (a.status === 'FILA') {
-  html += `
-    <button class="btn btn-primary" onclick="aprovar('${a.id}')">✅ Aprovar</button>
-    <button class="btn btn-danger" onclick="recusar('${a.id}')">❌ Recusar</button>
-  `
-}
+          <td>${a.pagamento ? '✅ Pago' : '⏳ Pendente'}</td>
 
-html += `
-  </td>
-</tr>
-`
+          <td>
+            <button class="btn btn-info" onclick="verDetalhes('${a.id}')">📋 Ver</button>
+        `
 
+        if (a.status === 'FILA') {
+            html += `
+                <button class="btn btn-primary" onclick="aprovar('${a.id}')">✅ Aprovar</button>
+                <button class="btn btn-danger" onclick="recusar('${a.id}')">❌ Recusar</button>
+            `
+        }
+
+        html += `
+          </td>
+        </tr>
+        `
+    }
+
+    html += '</tbody></table>'
+    document.getElementById('atendimentos').innerHTML = html
 }
 
 async function verDetalhes(id) {
-            try {
-                const res = await fetch(API_URL + '/api/atendimento/' + id, {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                })
-                const a = await res.json()
-                const detalhes = 
-                    '📋 DETALHES DO ATENDIMENTO\\n\\n' +
-                    '👤 Paciente: ' + (a.paciente_nome || 'N/A') + '\\n' +
-                    '📱 Telefone: ' + (a.paciente_telefone || 'N/A') + '\\n' +
-                    '🆔 CPF: ' + (a.paciente_cpf || 'N/A') + '\\n' +
-                    '📧 Email: ' + (a.paciente_email || 'N/A') + '\\n' +
-                    '🏥 Doença: ' + (a.doencas || 'N/A') + '\\n' +
-                    '📊 Status: ' + (a.status || 'PENDENTE') + '\\n' +
-                    '💳 Pagamento: ' + (a.pagamento ? 'Pago' : 'Pendente')
-                alert(detalhes)
-            } catch(e) {
-                alert('Erro ao carregar detalhes')
-            }
-        }
+    try {
+        const res = await fetch(API_URL + '/api/atendimento/' + id, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        })
+        const a = await res.json()
+        const detalhes =
+            '📋 DETALHES DO ATENDIMENTO\n\n' +
+            '👤 Paciente: ' + (a.paciente_nome || 'N/A') + '\n' +
+            '📱 Telefone: ' + (a.paciente_telefone || 'N/A') + '\n' +
+            '🆔 CPF: ' + (a.paciente_cpf || 'N/A') + '\n' +
+            '📧 Email: ' + (a.paciente_email || 'N/A') + '\n' +
+            '🏥 Doença: ' + (a.doencas || 'N/A') + '\n' +
+            '📊 Status: ' + (a.status || 'PENDENTE') + '\n' +
+            '💳 Pagamento: ' + (a.pagamento ? 'Pago' : 'Pendente')
+        alert(detalhes)
+    } catch (e) {
+        alert('Erro ao carregar detalhes')
+    }
+}
 
-        window.aprovar = async function ()
-            if (!confirm('Aprovar este paciente?')) return
-            try {
-                const res = await fetch(API_URL + '/api/decisao/' + id, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ decisao: 'APROVAR' })
-                })
-                const data = await res.json()
-                if (data.success) {
-                    alert('✅ Paciente aprovado!')
-                    carregarDados()
-                }
-            } catch(e) {
-                alert('Erro ao aprovar')
-            }
+window.aprovar = async function (id) {
+    if (!confirm('Aprovar este paciente?')) return
+    try {
+        const res = await fetch(API_URL + '/api/decisao/' + id, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ decisao: 'APROVAR' })
+        })
+        const data = await res.json()
+        if (data.success) {
+            alert('✅ Paciente aprovado!')
+            carregarDados()
         }
+    } catch (e) {
+        alert('Erro ao aprovar')
+    }
+}
 
-        window.recusar = async function ()
-            if (!confirm('Recusar este paciente?')) return
-            try {
-                const res = await fetch(API_URL + '/api/decisao/' + id, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ decisao: 'RECUSAR' })
-                })
-                const data = await res.json()
-                if (data.success) {
-                    alert('❌ Paciente recusado')
-                    carregarDados()
-                }
-            } catch(e) {
-                alert('Erro ao recusar')
-            }
+window.recusar = async function (id) {
+    if (!confirm('Recusar este paciente?')) return
+    try {
+        const res = await fetch(API_URL + '/api/decisao/' + id, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ decisao: 'RECUSAR' })
+        })
+        const data = await res.json()
+        if (data.success) {
+            alert('❌ Paciente recusado')
+            carregarDados()
         }
-
+    } catch (e) {
+        alert('Erro ao recusar')
+    }
+}
         setInterval(() => {
             if (document.getElementById('painel').style.display !== 'none') {
                 carregarDados()
