@@ -167,16 +167,13 @@ const db = {
     }
   },
 
-  // 🔒 Sistema de LOCK para fila
   async tentarPegarAtendimento(atendimentoId, medicoId, lockTimeMinutes = 30) {
     const at = await this.buscarAtendimentoPorId(atendimentoId)
     
     if (!at) return { sucesso: false, motivo: 'Atendimento não encontrado' }
     
-    // Verificar se já está em atendimento
     if (at.status === 'EM_ATENDIMENTO') {
       const lockExpirado = at.locked_until && new Date(at.locked_until) < new Date()
-      
       if (!lockExpirado) {
         return { 
           sucesso: false, 
@@ -187,7 +184,6 @@ const db = {
       }
     }
     
-    // Pegar o caso
     at.status = 'EM_ATENDIMENTO'
     at.em_atendimento_por = medicoId
     at.em_atendimento_desde = new Date().toISOString()
@@ -205,7 +201,6 @@ const db = {
 
   async liberarAtendimento(atendimentoId, manterLock = false) {
     const at = await this.buscarAtendimentoPorId(atendimentoId)
-    
     if (!at) return false
     
     if (!manterLock) {
@@ -222,7 +217,6 @@ const db = {
   async getFilaOrdenada() {
     const atendimentos = await this.getAtendimentos()
     
-    // Filtrar: pagos, status FILA ou EM_ATENDIMENTO com lock expirado
     const fila = atendimentos.filter(a => {
       if (!a.pagamento) return false
       if (a.status === 'APROVADO' || a.status === 'RECUSADO') return false
@@ -235,7 +229,6 @@ const db = {
       return a.status === 'FILA'
     })
     
-    // Ordenar por prioridade e depois por data de pagamento
     fila.sort((a, b) => {
       if (a.prioridade !== b.prioridade) return (b.prioridade || 0) - (a.prioridade || 0)
       return new Date(a.pago_em || a.criado_em) - new Date(b.pago_em || b.criado_em)
@@ -267,7 +260,7 @@ async function enviarWhatsApp(numero, msg) {
 }
 
 // ========================
-// 📄 GERADOR DE PDF (FALLBACK)
+// 📄 GERADOR DE PDF
 // ========================
 async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
   return new Promise(async (resolve, reject) => {
@@ -350,203 +343,42 @@ async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
 }
 
 // ========================
-// 🔗 MEMED (com fallback)
-// ========================
-async function enviarPrescricaoMemed(paciente, medicamentos, receitaId) {
-  if (!process.env.MEMED_API_KEY) {
-    console.log('⚠️ Memed não configurado')
-    return null
-  }
-  
-  try {
-    const payload = {
-      patient: {
-        name: paciente.nome,
-        cpf: paciente.cpf,
-        birth_date: paciente.nascimento || '1990-01-01',
-        phone: paciente.telefone
-      },
-      prescription: {
-        id: receitaId,
-        date: new Date().toISOString(),
-        items: medicamentos.map(med => ({
-          name: med.nome,
-          dosage: med.dosagem,
-          duration: med.duracao,
-          quantity: parseInt(med.quantidade) || 30,
-          instructions: med.instrucoes || 'Tomar conforme orientação médica'
-        }))
-      },
-      doctor: {
-        name: `${process.env.MEDICO_NOME || 'Dr'} ${process.env.MEDICO_SOBRENOME || 'Medico'}`,
-        council: process.env.MEDICO_CONSELHO || 'CRM',
-        number: process.env.MEDICO_NUMERO || '123456',
-        uf: process.env.MEDICO_UF || 'SP'
-      }
-    }
-    
-    const response = await axios.post(
-      `${process.env.MEMED_API_URL || 'https://integrations.api.memed.com.br/v1'}/prescriptions`,
-      payload,
-      {
-        headers: {
-          'X-API-KEY': process.env.MEMED_API_KEY,
-          'X-SECRET-KEY': process.env.MEMED_SECRET_KEY,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
-      }
-    )
-    
-    console.log(`✅ Prescrição enviada ao Memed: ${receitaId}`)
-    return response.data
-  } catch(e) {
-    console.error('❌ Memed erro:', e.response?.data || e.message)
-    return null
-  }
-}
-
-// ========================
-// 🧠 FUNÇÃO PRINCIPAL DE ENVIO DE RECEITA (COM FALLBACK)
+// 🧠 FUNÇÃO PRINCIPAL DE ENVIO DE RECEITA
 // ========================
 async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) {
   const at = await db.buscarAtendimentoPorId(atendimentoId)
   if (!at) return { sucesso: false, motivo: 'Atendimento não encontrado' }
   
-  const pacienteNome = decrypt(at.paciente_nome)
-  const pacienteCpf = decrypt(at.paciente_cpf)
-  const pacienteTelefone = decrypt(at.paciente_telefone)
-  
-  const medicamentos = prontuario?.medicamentos || []
-  if (medicamentos.length === 0 && prontuario?.medicacao) {
-    medicamentos.push({
-      nome: prontuario.medicacao,
-      dosagem: prontuario.dosagem || 'Conforme prescrição',
-      duracao: prontuario.tempoUso || '30 dias',
-      quantidade: 30,
-      instrucoes: orientacoes || prontuario.orientacoes
-    })
-  }
-  
-  let memedSucesso = false
-  let memedErro = null
-  
-  if (process.env.MEMED_API_KEY && medicamentos.length > 0) {
-    try {
-      const paciente = {
-        nome: pacienteNome,
-        cpf: pacienteCpf,
-        telefone: pacienteTelefone
-      }
-      
-      const resultado = await enviarPrescricaoMemed(paciente, medicamentos, atendimentoId)
-      memedSucesso = !!resultado
-      
-      if (!memedSucesso) {
-        memedErro = 'Memed retornou erro'
-      }
-    } catch (e) {
-      memedErro = e.message
-      console.error('❌ Memed falhou:', e.message)
-    }
-  }
-  
   let pdfSucesso = false
   let pdfUrl = null
   
-  if (!memedSucesso) {
-    try {
-      const pdfResult = await gerarReceitaPDF(at, prontuario, orientacoes)
-      
-      if (pdfResult.sucesso) {
-        pdfSucesso = true
-        pdfUrl = pdfResult.url
-        console.log(`✅ PDF fallback gerado: ${atendimentoId}`)
-      }
-    } catch (e) {
-      console.error(`❌ PDF fallback falhou: ${e.message}`)
+  try {
+    const pdfResult = await gerarReceitaPDF(at, prontuario, orientacoes)
+    if (pdfResult.sucesso) {
+      pdfSucesso = true
+      pdfUrl = pdfResult.url
+      console.log(`✅ PDF gerado: ${atendimentoId}`)
     }
+  } catch (e) {
+    console.error(`❌ PDF falhou: ${e.message}`)
   }
   
-  at.receita_enviada_por = memedSucesso ? 'memed' : (pdfSucesso ? 'pdf_fallback' : 'nenhum')
-  if (memedSucesso) at.receita_memed_id = 'enviado'
+  at.receita_enviada_por = pdfSucesso ? 'pdf_fallback' : 'nenhum'
   if (pdfUrl) at.receita_pdf_url = pdfUrl
-  if (memedErro) at.memed_falha_motivo = memedErro
   at.receita_enviada_em = new Date().toISOString()
   await db.salvarAtendimento(at)
   
   return {
-    sucesso: memedSucesso || pdfSucesso,
-    metodo: memedSucesso ? 'memed' : (pdfSucesso ? 'pdf_fallback' : 'falhou'),
-    erro: memedErro,
+    sucesso: pdfSucesso,
+    metodo: pdfSucesso ? 'pdf_fallback' : 'falhou',
     pdf_url: pdfUrl
   }
 }
 
 // ========================
-// ⚖️ DECISÃO MÉDICA (SEM AUTENTICAÇÃO - PARA TESTE)
-// ========================
-app.post('/api/decisao/:id', async (req, res) => {
-  try {
-    const { decisao, orientacoes } = req.body
-    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
-    
-    await db.atualizarStatus(req.params.id, novoStatus)
-
-    const at = await db.buscarAtendimentoPorId(req.params.id)
-    const telefone = decrypt(at.paciente_telefone)
-    const nome = decrypt(at.paciente_nome)
-
-    if (decisao === 'APROVAR') {
-      // 🔥 ENVIAR RECEITA COM FALLBACK
-      const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
-      
-      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
-      
-      if (resultado.metodo === 'memed') {
-        msg += `🔒 Receita digital enviada para seu WhatsApp/Email\n`
-      } else if (resultado.metodo === 'pdf_fallback') {
-        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
-      } else {
-        msg += `⚠️ Aguarde, a receita será enviada em breve.\n`
-      }
-      
-      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
-      
-      await enviarWhatsApp(telefone, msg)
-      
-      // ✅ ADICIONAR HISTÓRICO
-      at.decisao_historico = {
-        status: 'APROVADO',
-        data: new Date().toISOString(),
-        medico: 'sistema',
-        orientacoes,
-        receita_envio: resultado
-      }
-      await db.salvarAtendimento(at)
-      
-    } else {
-      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
-      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
-      msg += `\n\n🏥 Procure um atendimento presencial.`
-      
-      await enviarWhatsApp(telefone, msg)
-    }
-
-    res.json({ success: true, novoStatus })
-  } catch(e) {
-    console.error('❌ Erro na decisão:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-// ========================
 // 🛡️ MIDDLEWARES
 // ========================
-
-// 🔥 Configurar trust proxy (resolve aviso do rate limit)
 app.set('trust proxy', 1)
-
 app.use(cors())
 app.use(express.json())
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
@@ -574,10 +406,8 @@ app.post('/api/webhook/triagem', async (req, res) => {
       return res.status(400).json({ error: 'Dados inválidos' })
     }
 
-    // 🔥 GERAR ID PRIMEIRO
     const id = uuidv4()
 
-    // 🔥 TRATAR O TEXTO DAS DOENÇAS
     let texto = ''
     if (Array.isArray(triagem.doencas)) {
       texto = triagem.doencas.join(' ').toLowerCase()
@@ -586,22 +416,13 @@ app.post('/api/webhook/triagem', async (req, res) => {
     }
 
     const doencasElegiveis = [
-      // Hipertensão Arterial Sistemica
-      'has', 'hipertensao', 'hipertensão', 'pressao alta', 
-      // Diabetes
+      'has', 'hipertensao', 'hipertensão', 'pressao alta',
       'diabetes', 'diabete', 'dm', 'diabetes mellitus',
-      // Dislipidemia
       'dlp', 'dislipidemia', 'colesterol alto', 'triglicerides',
-      // Hipotireoidismo
       'hipotireoidismo', 'hipotireoide'
     ]
 
-    // Normaliza o texto (remove acentos)
-    const textoNormalizado = texto
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-
+    const textoNormalizado = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     const elegivel = doencasElegiveis.some(d => textoNormalizado.includes(d))
 
     const atendimento = {
@@ -612,13 +433,10 @@ app.post('/api/webhook/triagem', async (req, res) => {
       paciente_email: encrypt(paciente.email || ''),
       paciente_nascimento: encrypt(paciente.data_nascimento || ''),
       doencas: encrypt(texto),
-      
-      // DADOS DA TRIAGEM
       medicamento: encrypt(triagem.medicamento || ''),
       medicamento2: encrypt(triagem.medicamento2 || ''),
       tempo_uso: encrypt(triagem.tempoUso || ''),
       sinais_alerta: encrypt(String(triagem.sinaisAlerta || '')),
-      
       elegivel,
       status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
       pagamento: false,
@@ -677,7 +495,7 @@ app.get('/api/payment/:id', async (req, res) => {
 })
 
 // ========================
-// 🔥 STRIPE WEBHOOK (COM PROTEÇÃO CONTRA DUPLICAÇÃO)
+// 🔥 STRIPE WEBHOOK
 // ========================
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature']
@@ -699,7 +517,7 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 
   const jaProcessado = await webhookDb.eventoJaProcessado(eventId)
   if (jaProcessado) {
-    console.log(`⚠️ Evento ${eventId} já processado anteriormente. Ignorando.`)
+    console.log(`⚠️ Evento ${eventId} já processado. Ignorando.`)
     return res.json({ received: true, alreadyProcessed: true })
   }
 
@@ -716,7 +534,7 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
       }
 
       if (at.pagamento) {
-        console.log(`⚠️ Atendimento ${atendimentoId} já está com pagamento confirmado. Ignorando.`)
+        console.log(`⚠️ Atendimento ${atendimentoId} já está com pagamento confirmado.`)
         await webhookDb.salvarEvento(eventId, eventType, atendimentoId)
         return res.json({ received: true, alreadyPaid: true })
       }
@@ -735,21 +553,12 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 })
 
 // ========================
-// 🔐 FUNÇÃO GERAR TOKEN (SEM BLOQUEIO DE ROTAS)
-// ========================
-function gerarToken() {
-  return jwt.sign(
-    { 
-      role: 'medico',
-      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 8) // Expira em 8 horas
-    },
-    process.env.JWT_SECRET
-  )
-}
-
-// ========================
 // 👨‍⚕️ LOGIN
 // ========================
+function gerarToken() {
+  return jwt.sign({ role: 'medico' }, process.env.JWT_SECRET, { expiresIn: '12h' })
+}
+
 app.post('/login', (req, res) => {
   if (req.body.senha !== process.env.MEDICO_PASS) {
     return res.status(401).json({ error: 'Senha inválida' })
@@ -758,9 +567,8 @@ app.post('/login', (req, res) => {
 })
 
 // ========================
-// 📋 ROTAS DA FILA (COM LOCK)
+// 📋 ROTAS DA FILA
 // ========================
-
 app.post('/api/fila/pegar-proximo', async (req, res) => {
   try {
     const medicoId = req.body.medicoId || 'medico_principal'
@@ -821,15 +629,8 @@ app.get('/api/fila/estatisticas', async (req, res) => {
     const todos = await db.getAtendimentos()
     const fila = await db.getFilaOrdenada()
     
-    const emAtendimento = todos.filter(a => 
-      a.status === 'EM_ATENDIMENTO' && 
-      a.locked_until && new Date(a.locked_until) > new Date()
-    )
-    
-    const locksExpirados = todos.filter(a => 
-      a.status === 'EM_ATENDIMENTO' && 
-      a.locked_until && new Date(a.locked_until) < new Date()
-    )
+    const emAtendimento = todos.filter(a => a.status === 'EM_ATENDIMENTO' && a.locked_until && new Date(a.locked_until) > new Date())
+    const locksExpirados = todos.filter(a => a.status === 'EM_ATENDIMENTO' && a.locked_until && new Date(a.locked_until) < new Date())
     
     res.json({
       total_fila: fila.length,
@@ -847,12 +648,11 @@ app.get('/api/fila/estatisticas', async (req, res) => {
 })
 
 // ========================
-// 📋 ROTAS PROTEGIDAS
+// 📋 ROTAS PÚBLICAS
 // ========================
 app.get('/api/pacientes', async (req, res) => {
   try {
     const atendimentos = await db.getAtendimentos()
-    
     res.json(atendimentos.map(a => ({
       id: a.id,
       paciente_nome: decrypt(a.paciente_nome),
@@ -896,22 +696,17 @@ app.get('/api/atendimentos', async (req, res) => {
 })
 
 // ========================
-// 📞 ROTAS DE SUPORTE (ADICIONAR)
+// 📞 ROTAS DE SUPORTE
 // ========================
-
-// Banco simples em memória para suportes pendentes
 const suportesPendentes = {}
 
-// Rota para registrar pedido de suporte (chamada pelo n8n)
 app.post('/api/suporte/solicitar', async (req, res) => {
   try {
     const { telefone, nome, mensagem } = req.body
     const id = Math.random().toString(36).substring(2, 10)
     
     suportesPendentes[id] = {
-      id,
-      telefone,
-      nome: nome || 'Paciente',
+      id, telefone, nome: nome || 'Paciente',
       mensagem: mensagem || 'Aguardando atendimento',
       status: 'PENDENTE',
       criado_em: new Date().toISOString()
@@ -924,13 +719,11 @@ app.post('/api/suporte/solicitar', async (req, res) => {
   }
 })
 
-// Rota para listar suportes pendentes (chamada pelo painel)
 app.get('/api/suporte/pendentes', async (req, res) => {
   const pendentes = Object.values(suportesPendentes).filter(s => s.status === 'PENDENTE')
   res.json(pendentes)
 })
 
-// Rota para marcar como atendido
 app.post('/api/suporte/atender/:id', async (req, res) => {
   const { id } = req.params
   if (suportesPendentes[id]) {
@@ -940,7 +733,6 @@ app.post('/api/suporte/atender/:id', async (req, res) => {
   res.json({ success: true })
 })
 
-// Rota para enviar WhatsApp (usada pelo painel)
 app.post('/api/enviar-whatsapp', async (req, res) => {
   try {
     const { telefone, mensagem } = req.body
@@ -951,7 +743,9 @@ app.post('/api/enviar-whatsapp', async (req, res) => {
   }
 })
 
-// 🔧 ROTA TEMPORÁRIA PARA SIMULAR PAGAMENTO (APENAS TESTE)
+// ========================
+// 🔧 ROTA PARA SIMULAR PAGAMENTO
+// ========================
 app.post('/api/teste/simular-pagamento/:id', async (req, res) => {
   try {
     const { id } = req.params
@@ -971,7 +765,6 @@ app.post('/api/teste/simular-pagamento/:id', async (req, res) => {
     
     await db.salvarAtendimento(at)
     
-    // Enviar WhatsApp
     const telefone = decrypt(at.paciente_telefone)
     if (telefone) {
       await enviarWhatsApp(telefone, '✅ Pagamento confirmado! Você está na fila.')
@@ -984,7 +777,7 @@ app.post('/api/teste/simular-pagamento/:id', async (req, res) => {
 })
 
 // ========================
-// 💾 SALVAR PRONTUÁRIO (SEM AUTENTICAÇÃO)
+// 💾 SALVAR PRONTUÁRIO
 // ========================
 app.post('/api/salvar-prontuario/:id', async (req, res) => {
   try {
@@ -1005,29 +798,60 @@ app.post('/api/salvar-prontuario/:id', async (req, res) => {
 })
 
 // ========================
-// 💊 RECEITA
+// ⚖️ DECISÃO MÉDICA
 // ========================
-app.post('/api/receita/:id', async (req, res) => {
+app.post('/api/decisao/:id', async (req, res) => {
   try {
-    const { medicamentos, orientacoes } = req.body
+    const { decisao, orientacoes } = req.body
+    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    
+    await db.atualizarStatus(req.params.id, novoStatus)
+
     const at = await db.buscarAtendimentoPorId(req.params.id)
-    
-    if (!at) return res.status(404).json({ error: 'Atendimento não encontrado' })
-    
-    await db.adicionarReceita(req.params.id, { 
-      medicamentos, 
-      orientacoes,
-      criado_em: new Date().toISOString() 
-    })
-    
-    res.json({ success: true })
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+
+    if (decisao === 'APROVAR') {
+      const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
+      
+      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      
+      if (resultado.metodo === 'pdf_fallback' && resultado.pdf_url) {
+        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
+      } else {
+        msg += `⚠️ Aguarde, a receita será enviada em breve.\n`
+      }
+      
+      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
+      
+      await enviarWhatsApp(telefone, msg)
+      
+      at.decisao_historico = {
+        status: 'APROVADO',
+        data: new Date().toISOString(),
+        medico: 'sistema',
+        orientacoes,
+        receita_envio: resultado
+      }
+      await db.salvarAtendimento(at)
+      
+    } else {
+      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
+      msg += `\n\n🏥 Procure um atendimento presencial.`
+      
+      await enviarWhatsApp(telefone, msg)
+    }
+
+    res.json({ success: true, novoStatus })
   } catch(e) {
+    console.error('❌ Erro na decisão:', e)
     res.status(500).json({ error: e.message })
   }
 })
 
 // ========================
-// 📋 PRONTUÁRIO DO PACIENTE (COM PRÉ-PREENCHIMENTO COMPLETO)
+// 📋 PRONTUÁRIO DO PACIENTE
 // ========================
 app.get('/prontuario/:id', async (req, res) => {
   try {
@@ -1036,25 +860,16 @@ app.get('/prontuario/:id', async (req, res) => {
       return res.status(404).send('Prontuário não encontrado')
     }
 
-    // ========================
-    // 🔓 DESCRIPTOGRAFAR DADOS DO PACIENTE
-    // ========================
     const pacienteNome = decrypt(at.paciente_nome) || ''
     const pacienteTelefone = decrypt(at.paciente_telefone) || ''
     const pacienteCpf = decrypt(at.paciente_cpf) || ''
     const pacienteEmail = decrypt(at.paciente_email) || ''
     const pacienteNascimento = decrypt(at.paciente_nascimento) || ''
     const doencas = decrypt(at.doencas) || ''
-    
-    // ========================
-    // 🔥 NOVO: BUSCAR DADOS DA TRIAGEM
-    // ========================
     const medicamento = decrypt(at.medicamento) || ''
     const medicamento2 = decrypt(at.medicamento2) || ''
     const tempoUso = decrypt(at.tempo_uso) || ''
-    const sinaisAlerta = decrypt(at.sinais_alerta) || ''
     
-    // Juntar medicamentos em uma única string para exibir - CORRIGIDO
     let medicacaoCompleta = medicamento
     if (medicamento2) {
       medicacaoCompleta += medicacaoCompleta ? `, ${medicamento2}` : medicamento2
@@ -1144,7 +959,6 @@ app.get('/prontuario/:id', async (req, res) => {
 
 <script>
     const atendimentoId = '${req.params.id}';
-    let token = localStorage.getItem('token');
 
     async function salvarProntuario() {
         const dados = {
@@ -1191,7 +1005,7 @@ app.get('/prontuario/:id', async (req, res) => {
 })
 
 // ========================
-// 🏥 PAINEL MÉDICO (COM LOGIN BONITO + SUPORTE)
+// 🏥 PAINEL MÉDICO
 // ========================
 app.get('/painel-medico', (req, res) => {
   res.send(`<!DOCTYPE html>
@@ -1267,10 +1081,7 @@ app.get('/painel-medico', (req, res) => {
     </div>
 </div>
 <script>
-let token=localStorage.getItem('token');
-let dadosAtendimentos=[];
-
-<script>
+let token = localStorage.getItem('token');
 let dadosAtendimentos = [];
 
 async function fazerLogin() {
@@ -1309,19 +1120,18 @@ function logout() {
 
 async function carregarDados() {
   try {
-    // 🔥 ROTAS PÚBLICAS (SEM TOKEN)
     const res = await fetch('/api/atendimentos');
     dadosAtendimentos = await res.json();
     
     const statsRes = await fetch('/api/estatisticas');
     const stats = await statsRes.json();
     
-    document.getElementById('stats').innerHTML = `
-      <div class="stat-card"><div class="stat-number">${stats.total || 0}</div><div>Total</div></div>
-      <div class="stat-card"><div class="stat-number">${stats.naFila || 0}</div><div>Na Fila</div></div>
-      <div class="stat-card"><div class="stat-number">${stats.aprovados || 0}</div><div>Aprovados</div></div>
-      <div class="stat-card"><div class="stat-number">${stats.recusados || 0}</div><div>Recusados</div></div>
-    `;
+    document.getElementById('stats').innerHTML = \`
+      <div class="stat-card"><div class="stat-number">\${stats.total || 0}</div><div>Total</div></div>
+      <div class="stat-card"><div class="stat-number">\${stats.naFila || 0}</div><div>Na Fila</div></div>
+      <div class="stat-card"><div class="stat-number">\${stats.aprovados || 0}</div><div>Aprovados</div></div>
+      <div class="stat-card"><div class="stat-number">\${stats.recusados || 0}</div><div>Recusados</div></div>
+    \`;
     
     renderizarColunas();
     carregarSuportes();
@@ -1340,19 +1150,19 @@ async function carregarSuportes() {
       html = '<div class="empty-state">📭 Nenhum chamado pendente</div>';
     } else {
       suportes.forEach(s => {
-        html += `
-          <div class="suporte-card" data-id="${s.id}">
+        html += \`
+          <div class="suporte-card" data-id="\${s.id}">
             <div class="suporte-header">
-              <span class="suporte-nome">👤 ${s.nome || 'Paciente'}</span>
-              <span class="suporte-telefone">📱 ${s.telefone}</span>
+              <span class="suporte-nome">👤 \${s.nome || 'Paciente'}</span>
+              <span class="suporte-telefone">📱 \${s.telefone}</span>
             </div>
-            <div class="suporte-mensagem">💬 ${s.mensagem || 'Aguardando atendimento'}</div>
-            <div class="suporte-tempo">⏱️ Há ${formatarTempo(s.criado_em)}</div>
+            <div class="suporte-mensagem">💬 \${s.mensagem || 'Aguardando atendimento'}</div>
+            <div class="suporte-tempo">⏱️ Há \${formatarTempo(s.criado_em)}</div>
             <div class="suporte-actions">
-              <button class="btn btn-atender" onclick="atenderSuporte('${s.id}', '${s.telefone}', '${s.nome || 'Paciente'}')">✓ Atender</button>
+              <button class="btn btn-atender" onclick="atenderSuporte('\${s.id}', '\${s.telefone}', '\${s.nome || 'Paciente'}')">✓ Atender</button>
             </div>
           </div>
-        `;
+        \`;
       });
     }
     document.getElementById('suportesPendentes').innerHTML = html;
@@ -1372,7 +1182,7 @@ async function atenderSuporte(id, telefone, nome) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         telefone: telefone,
-        mensagem: '👨‍⚕️ Doctor Prescreve\n\nOlá! Um atendente já está analisando seu caso e falará com você em breve.'
+        mensagem: '👨‍⚕️ Doctor Prescreve\\n\\nOlá! Um atendente já está analisando seu caso e falará com você em breve.'
       })
     });
     
@@ -1398,63 +1208,60 @@ function renderizarColunas() {
   const emAtendimento = dadosAtendimentos.filter(a => a.status === 'EM_ATENDIMENTO');
   const aguardandoDecisao = dadosAtendimentos.filter(a => a.status === 'PRONTO_PARA_DECISAO');
   
-  // Coluna FILA
   let filaHtml = '';
   if (fila.length === 0) {
     filaHtml = '<div class="empty-state">📭 Nenhum paciente na fila</div>';
   } else {
     fila.forEach(a => {
-      filaHtml += `
+      filaHtml += \`
         <div class="card">
-          <div class="card-id">ID: ${a.id.substring(0,8)}</div>
-          <div class="card-name">${a.paciente_nome || 'Paciente'}</div>
+          <div class="card-id">ID: \${a.id.substring(0,8)}</div>
+          <div class="card-name">\${a.paciente_nome || 'Paciente'}</div>
           <div class="card-time">⏱️ Na fila</div>
           <div class="card-actions">
             <button class="btn btn-pegar" onclick="pegarProximo()">🎯 Pegar Próximo</button>
           </div>
         </div>
-      `;
+      \`;
     });
   }
   document.getElementById('filaColuna').innerHTML = filaHtml;
   
-  // Coluna EM ATENDIMENTO
   let atendimentoHtml = '';
   if (emAtendimento.length === 0) {
     atendimentoHtml = '<div class="empty-state">📋 Nenhum caso em atendimento</div>';
   } else {
     emAtendimento.forEach(a => {
-      atendimentoHtml += `
+      atendimentoHtml += \`
         <div class="card">
-          <div class="card-id">ID: ${a.id.substring(0,8)}</div>
-          <div class="card-name">${a.paciente_nome || 'Paciente'}</div>
+          <div class="card-id">ID: \${a.id.substring(0,8)}</div>
+          <div class="card-name">\${a.paciente_nome || 'Paciente'}</div>
           <div class="card-time">👨‍⚕️ Em atendimento</div>
           <div class="card-actions">
-            <button class="btn btn-prontuario" onclick="abrirProntuario('${a.id}')">📋 Abrir Prontuário</button>
+            <button class="btn btn-prontuario" onclick="abrirProntuario('\${a.id}')">📋 Abrir Prontuário</button>
           </div>
         </div>
-      `;
+      \`;
     });
   }
   document.getElementById('atendimentoColuna').innerHTML = atendimentoHtml;
   
-  // Coluna DECISÃO
   let decisaoHtml = '';
   if (aguardandoDecisao.length === 0) {
     decisaoHtml = '<div class="empty-state">⚖️ Aguardando prontuários</div>';
   } else {
     aguardandoDecisao.forEach(a => {
-      decisaoHtml += `
+      decisaoHtml += \`
         <div class="card">
-          <div class="card-id">ID: ${a.id.substring(0,8)}</div>
-          <div class="card-name">${a.paciente_nome || 'Paciente'}</div>
+          <div class="card-id">ID: \${a.id.substring(0,8)}</div>
+          <div class="card-name">\${a.paciente_nome || 'Paciente'}</div>
           <div class="card-time">📝 Pronto para decisão</div>
           <div class="card-actions">
-            <button class="btn btn-aprovar" onclick="aprovarConsulta('${a.id}')">✅ Aprovar</button>
-            <button class="btn btn-recusar" onclick="recusarConsulta('${a.id}')">❌ Recusar</button>
+            <button class="btn btn-aprovar" onclick="aprovarConsulta('\${a.id}')">✅ Aprovar</button>
+            <button class="btn btn-recusar" onclick="recusarConsulta('\${a.id}')">❌ Recusar</button>
           </div>
         </div>
-      `;
+      \`;
     });
   }
   document.getElementById('decisaoColuna').innerHTML = decisaoHtml;
@@ -1525,9 +1332,8 @@ async function recusarConsulta(id) {
   }
 }
 
-// Inicialização
-const token = localStorage.getItem('token');
-if (token) {
+const tokenCheck = localStorage.getItem('token');
+if (tokenCheck) {
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('painelArea').style.display = 'block';
   carregarDados();
@@ -1539,160 +1345,18 @@ setInterval(() => {
   }
 }, 30000);
 </script>
+</body>
+</html>
+  `)
+})
 
 // ========================
-// 🔗 MEMED - ROTAS DE INTEGRAÇÃO
+// PÁGINAS PÚBLICAS
 // ========================
-
-// 1. CADASTRAR PRESCRITOR NA MEMED
-app.post('/api/memed/cadastrar-prescritor', auth, async (req, res) => {
-  try {
-    if (!process.env.MEMED_API_KEY) {
-      return res.status(400).json({ error: 'Memed não configurado' })
-    }
-
-    const response = await axios.post(
-      `${process.env.MEMED_API_URL}/sinapse-prescricao/usuarios`,
-      {
-        nome: process.env.MEDICO_NOME,
-        sobrenome: process.env.MEDICO_SOBRENOME,
-        cpf: process.env.MEDICO_CPF,
-        registro: process.env.MEDICO_NUMERO,
-        uf: process.env.MEDICO_UF,
-        email: process.env.MEDICO_EMAIL,
-        especialidade: "Clínica Geral",
-        data_nascimento: "01/01/1980"
-      },
-      {
-        params: {
-          'api-key': process.env.MEMED_API_KEY,
-          'secret-key': process.env.MEMED_SECRET_KEY
-        },
-        headers: { 'Content-Type': 'application/json' }
-      }
-    )
-
-    const usuario = response.data.data
-    console.log(`✅ Prescritor cadastrado na Memed: ${usuario.nome}`)
-
-    res.json({
-      success: true,
-      message: 'Prescritor cadastrado com sucesso',
-      token: usuario.token,
-      medico: { id: usuario.id, nome: usuario.nome, crm: usuario.crm }
-    })
-  } catch(e) {
-    console.error('❌ Erro ao cadastrar prescritor:', e.response?.data || e.message)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-// 2. OBTER TOKEN DO PRESCRITOR (BUSCAR POR CPF)
-app.get('/api/memed/token-prescritor', auth, async (req, res) => {
-  try {
-    if (!process.env.MEMED_API_KEY) {
-      return res.status(400).json({ error: 'Memed não configurado' })
-    }
-
-    const identificador = process.env.MEDICO_CPF
-
-    const response = await axios.get(
-      `${process.env.MEMED_API_URL}/sinapse-prescricao/usuarios/${identificador}`,
-      {
-        params: {
-          'api-key': process.env.MEMED_API_KEY,
-          'secret-key': process.env.MEMED_SECRET_KEY
-        },
-        headers: { 'Accept': 'application/vnd.api+json' }
-      }
-    )
-
-    const usuario = response.data.data
-    console.log(`✅ Token do prescritor obtido: ${usuario.token?.substring(0, 20)}...`)
-
-    res.json({
-      success: true,
-      token: usuario.token,
-      expira_em: usuario.token_expires_at,
-      medico: { nome: usuario.nome, crm: usuario.crm, uf: usuario.uf }
-    })
-  } catch(e) {
-    console.error('❌ Erro ao obter token:', e.response?.data || e.message)
-    
-    if (e.response?.status === 404) {
-      res.status(404).json({ error: 'Prescritor não encontrado', acao: 'cadastrar' })
-    } else {
-      res.status(500).json({ error: e.message })
-    }
-  }
-})
-
-// 3. RECEBER EVENTO DE PRESCRIÇÃO GERADA (WEBHOOK DO FRONTEND)
-app.post('/api/memed/prescricao-gerada', auth, async (req, res) => {
-  try {
-    const { prescricaoId, paciente, medicamentos, documento } = req.body
-    
-    console.log(`📋 Prescrição Memed recebida: ${prescricaoId}`)
-    
-    const pdfFile = documento?.find(doc => doc.type === 'full')
-    
-    const msg = `✅ Olá ${paciente.nome}!\n\n` +
-                `Sua receita foi gerada com sucesso!\n\n` +
-                `📋 Número: ${prescricaoId}\n` +
-                `💊 Medicamentos:\n${medicamentos?.map(m => `- ${m.nome}`).join('\n') || 'Conforme prescrição'}\n\n` +
-                `💊 Doctor Prescreve - Cuide da sua saúde!`
-    
-    await enviarWhatsApp(paciente.telefone, msg)
-    
-    res.json({ success: true })
-  } catch(e) {
-    console.error('❌ Erro ao processar prescrição gerada:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-app.post('/api/teste/simular-pagamento/:id', async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const at = await db.buscarAtendimentoPorId(id)
-
-    if (!at) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
-    }
-
-    if (at.pagamento) {
-      return res.json({
-        message: 'Pagamento já confirmado',
-        status: at.status
-      })
-    }
-
-    at.pagamento = true
-    at.status = 'FILA'
-    at.pago_em = new Date().toISOString()
-
-    await db.salvarAtendimento(at)
-
-    const telefone = decrypt(at.paciente_telefone)
-    if (telefone) {
-      await enviarWhatsApp(
-        telefone,
-        'Doctor Prescreve\n\nPagamento confirmado! Você já está na fila de atendimento.'
-      )
-    }
-
-    res.json({
-      success: true,
-      message: 'Pagamento simulado com sucesso',
-      status: at.status
-    })
-
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ error: e.message })
-  }
-})
+app.get('/healthz', (req, res) => res.json({ status: 'ok' }))
+app.get('/success', (req, res) => res.send('<h1>✅ Pagamento Confirmado!</h1><p>Você receberá a resposta em breve.</p><a href="/painel-medico">Voltar</a>'))
+app.get('/cancel', (req, res) => res.send('<h1>❌ Pagamento Cancelado</h1><a href="/">Voltar</a>'))
+app.get('/', (req, res) => res.json({ service: 'Doctor Prescreve', status: 'online' }))
 
 // ========================
 // 🚀 INICIA SERVIDOR
