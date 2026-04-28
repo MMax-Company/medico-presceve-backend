@@ -484,9 +484,7 @@ async function enviarReceitaComFallback(atendimentoId, prontuario, orientacoes) 
 }
 
 // ========================
-// ⚖️ DECISÃO MÉDICA (COM FALLBACK DO MEMED E HISTÓRICO)
-// ========================
-app.post('/api/decisao/:id', auth, async (req, res) => {
+app.post('/api/decisao/:id', async (req, res) => {
   try {
     const { decisao, orientacoes } = req.body
     const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
@@ -499,6 +497,381 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
 
     if (decisao === 'APROVAR') {
       // 🔥 ENVIAR RECEITA COM FALLBACK
+      const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
+      
+      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      
+      if (resultado.metodo === 'memed') {
+        msg += `🔒 Receita digital enviada para seu WhatsApp/Email\n`
+      } else if (resultado.metodo === 'pdf_fallback') {
+        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
+      } else {
+        msg += `⚠️ Aguarde, a receita será enviada em breve.\n`
+      }
+      
+      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
+      
+      await enviarWhatsApp(telefone, msg)
+      
+      // ✅ ADICIONAR HISTÓRICO (parte que estava faltando)
+      at.decisao_historico = {
+        status: 'APROVADO',
+        data: new Date().toISOString(),
+        medico: req.user?.id || 'medico',
+        orientacoes,
+        receita_envio: resultado
+      }
+      await db.salvarAtendimento(at)
+      
+    } else {
+      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
+      msg += `\n\n🏥 Procure um atendimento presencial.`
+      
+      await enviarWhatsApp(telefone, msg)
+    }
+
+    res.json({ success: true, novoStatus })
+  } catch(e) {
+    console.error('❌ Erro na decisão:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ========================
+// 🛡️ MIDDLEWARES
+// ========================
+
+// 🔥 Configurar trust proxy (resolve aviso do rate limit)
+app.set('trust proxy', 1)
+
+app.use(cors())
+app.use(express.json())
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
+
+// Rota para servir PDF
+app.get('/receita-pdf/:id', async (req, res) => {
+  const filepath = path.join(DB_DIR, `receita_${req.params.id}.pdf`)
+  if (fs.existsSync(filepath)) {
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `inline; filename=receita_${req.params.id}.pdf`)
+    fs.createReadStream(filepath).pipe(res)
+  } else {
+    res.status(404).send('Receita não encontrada')
+  }
+})
+
+// ========================
+// 🧠 TRIAGEM
+// ========================
+app.post('/api/webhook/triagem', async (req, res) => {
+  try {
+    const { paciente = {}, triagem = {} } = req.body
+
+    if (!paciente.nome || !triagem.doencas) {
+      return res.status(400).json({ error: 'Dados inválidos' })
+    }
+
+    // 🔥 GERAR ID PRIMEIRO
+    const id = uuidv4()
+
+    // 🔥 TRATAR O TEXTO DAS DOENÇAS
+    let texto = ''
+    if (Array.isArray(triagem.doencas)) {
+      texto = triagem.doencas.join(' ').toLowerCase()
+    } else {
+      texto = (triagem.doencas || '').toLowerCase()
+    }
+
+    const doencasElegiveis = [
+      // Hipertensão Arterial Sistemica
+      'has', 'hipertensao', 'hipertensão', 'pressao alta', 
+      // Diabetes
+      'diabetes', 'diabete', 'dm', 'diabetes mellitus',
+      // Dislipidemia
+      'dlp', 'dislipidemia', 'colesterol alto', 'triglicerides',
+      // Hipotireoidismo
+      'hipotireoidismo', 'hipotireoide'
+    ]
+
+    // Normaliza o texto (remove acentos)
+    const textoNormalizado = texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+
+    const elegivel = doencasElegiveis.some(d => textoNormalizado.includes(d))
+
+    const atendimento = {
+      id,
+      paciente_nome: encrypt(paciente.nome),
+      paciente_telefone: encrypt(paciente.telefone || ''),
+      paciente_cpf: encrypt(paciente.cpf || ''),
+      paciente_email: encrypt(paciente.email || ''),
+      paciente_nascimento: encrypt(paciente.data_nascimento || ''),
+      doencas: encrypt(texto),
+      
+      // DADOS DA TRIAGEM
+      medicamento: encrypt(triagem.medicamento || ''),
+      medicamento2: encrypt(triagem.medicamento2 || ''),
+      tempo_uso: encrypt(triagem.tempoUso || ''),
+      sinais_alerta: encrypt(String(triagem.sinaisAlerta || '')),
+      
+      elegivel,
+      status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
+      pagamento: false,
+      criado_em: new Date().toISOString(),
+      pago_em: null,
+      em_atendimento_por: null,
+      em_atendimento_desde: null,
+      prioridade: 0,
+      tentativas_lock: 0,
+      locked_until: null
+    }
+
+    await db.salvarAtendimento(atendimento)
+
+    if (elegivel) {
+      const url = `${BASE_URL}/api/payment/${id}`
+      await enviarWhatsApp(paciente.telefone, `✅ Olá ${paciente.nome}! Sua triagem foi aprovada! Link: ${url}`)
+    } else {
+      await enviarWhatsApp(paciente.telefone, '❌ Não elegível para teleconsulta.')
+    }
+
+    res.json({ success: true, id, elegivel, payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null })
+  } catch(e) {
+    console.error('❌ Erro na triagem:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ========================
+// 💳 PAGAMENTO
+// ========================
+app.get('/api/payment/:id', async (req, res) => {
+  try {
+    const at = awapp.post('/api/decisao/:id', async (req, res) => {
+  try {
+    const { decisao, orientacoes } = req.body
+    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    
+    await db.atualizarStatus(req.params.id, novoStatus)
+
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+
+    if (decisao === 'APROVAR') {
+      // 🔥 ENVIAR RECEITA COM FALLBACK
+      const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
+      
+      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      
+      if (resultado.metodo === 'memed') {
+        msg += `🔒 Receita digital enviada para seu WhatsApp/Email\n`
+      } else if (resultado.metodo === 'pdf_fallback') {
+        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
+      } else {
+        msg += `⚠️ Aguarde, a receita será enviada em breve.\n`
+      }
+      
+      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
+      
+      await enviarWhatsApp(telefone, msg)
+      
+      // ✅ ADICIONAR HISTÓRICO (parte que estava faltando)
+      at.decisao_historico = {
+        status: 'APROVADO',
+        data: new Date().toISOString(),
+        medico: req.user?.id || 'medico',
+        orientacoes,
+        receita_envio: resultado
+      }
+      await db.salvarAtendimento(at)
+      
+    } else {
+      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
+      msg += `\n\n🏥 Procure um atendimento presencial.`
+      
+      await enviarWhatsApp(telefone, msg)
+    }
+
+    res.json({ success: true, novoStatus })
+  } catch(e) {
+    console.error('❌ Erro na decisão:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ========================
+// 🛡️ MIDDLEWARES
+// ========================
+
+// 🔥 Configurar trust proxy (resolve aviso do rate limit)
+app.set('trust proxy', 1)
+
+app.use(cors())
+app.use(express.json())
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
+
+// Rota para servir PDF
+app.get('/receita-pdf/:id', async (req, res) => {
+  const filepath = path.join(DB_DIR, `receita_${req.params.id}.pdf`)
+  if (fs.existsSync(filepath)) {
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `inline; filename=receita_${req.params.id}.pdf`)
+    fs.createReadStream(filepath).pipe(res)
+  } else {
+    res.status(404).send('Receita não encontrada')
+  }
+})
+
+// ========================
+// 🧠 TRIAGEM
+// ========================
+app.post('/api/webhook/triagem', async (req, res) => {
+  try {
+    const { paciente = {}, triagem = {} } = req.body
+
+    if (!paciente.nome || !triagem.doencas) {
+      return res.status(400).json({ error: 'Dados inválidos' })
+    }
+
+    // 🔥 GERAR ID PRIMEIRO
+    const id = uuidv4()
+
+    // 🔥 TRATAR O TEXTO DAS DOENÇAS
+    let texto = ''
+    if (Array.isArray(triagem.doencas)) {
+      texto = triagem.doencas.join(' ').toLowerCase()
+    } else {
+      texto = (triagem.doencas || '').toLowerCase()
+    }
+
+    const doencasElegiveis = [
+      // Hipertensão Arterial Sistemica
+      'has', 'hipertensao', 'hipertensão', 'pressao alta', 
+      // Diabetes
+      'diabetes', 'diabete', 'dm', 'diabetes mellitus',
+      // Dislipidemia
+      'dlp', 'dislipidemia', 'colesterol alto', 'triglicerides',
+      // Hipotireoidismo
+      'hipotireoidismo', 'hipotireoide'
+    ]
+
+    // Normaliza o texto (remove acentos)
+    const textoNormalizado = texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+
+    const elegivel = doencasElegiveis.some(d => textoNormalizado.includes(d))
+
+    const atendimento = {
+      id,
+      paciente_nome: encrypt(paciente.nome),
+      paciente_telefone: encrypt(paciente.telefone || ''),
+      paciente_cpf: encrypt(paciente.cpf || ''),
+      paciente_email: encrypt(paciente.email || ''),
+      paciente_nascimento: encrypt(paciente.data_nascimento || ''),
+      doencas: encrypt(texto),
+      
+      // DADOS DA TRIAGEM
+      medicamento: encrypt(triagem.medicamento || ''),
+      medicamento2: encrypt(triagem.medicamento2 || ''),
+      tempo_uso: encrypt(triagem.tempoUso || ''),
+      sinais_alerta: encrypt(String(triagem.sinaisAlerta || '')),
+      
+      elegivel,
+      status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
+      pagamento: false,
+      criado_em: new Date().toISOString(),
+      pago_em: null,
+      em_atendimento_por: null,
+      em_atendimento_desde: null,
+      prioridade: 0,
+      tentativas_lock: 0,
+      locked_until: null
+    }
+
+    await db.salvarAtendimento(atendimento)
+
+    if (elegivel) {
+      const url = `${BASE_URL}/api/payment/${id}`
+      await enviarWhatsApp(paciente.telefone, `✅ Olá ${paciente.nome}! Sua triagem foi aprovada! Link: ${url}`)
+    } else {
+      await enviarWhatsApp(paciente.telefone, '❌ Não elegível para teleconsulta.')
+    }
+
+    res.json({ success: true, id, elegivel, payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null })
+  } catch(e) {
+    console.error('❌ Erro na triagem:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
+    
+// ========================
+// ⚖️ DECISÃO MÉDICA 
+// ========================
+app.post('/api/decisao/:id', async (req, res) => {
+  try {
+    const { decisao, orientacoes } = req.body
+    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    
+    await db.atualizarStatus(req.params.id, novoStatus)
+
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const telefone = decrypt(at.paciente_telefone) || ''
+    const nome = decrypt(at.paciente_nome) || 'Paciente'
+    const prontuario = at.prontuario || {}
+
+    if (decisao === 'APROVAR') {
+      let resultado = { metodo: 'nenhum', pdf_url: null }
+      
+      try {
+        resultado = await enviarReceitaComFallback(req.params.id, prontuario, orientacoes)
+      } catch(err) {
+        console.error('❌ Erro ao enviar receita:', err)
+      }
+      
+      let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      
+      if (resultado.metodo === 'memed') {
+        msg += `🔒 Receita digital enviada para seu WhatsApp/Email\n`
+      } else if (resultado.metodo === 'pdf_fallback' && resultado.pdf_url) {
+        msg += `📄 Clique para baixar sua receita: ${BASE_URL}${resultado.pdf_url}\n`
+      }
+      
+      if (orientacoes) msg += `\n📝 Orientações: ${orientacoes}`
+      
+      if (telefone) {
+        await enviarWhatsApp(telefone, msg)
+      }
+      
+    } else {
+      let msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
+      if (orientacoes) msg += `\n📝 Motivo: ${orientacoes}`
+      msg += `\n\n🏥 Procure um atendimento presencial.`
+      
+      if (telefone) {
+        await enviarWhatsApp(telefone, msg)
+      }
+    }
+
+    res.json({ success: true, novoStatus })
+  } catch(e) {
+    console.error('❌ Erro na decisão:', e)
+    res.status(500).json({ error: e.message, stack: e.stack })
+  }
+})
+  
+// 🔥 ENVIAR RECEITA COM FALLBACK
       const resultado = await enviarReceitaComFallback(req.params.id, at.prontuario, orientacoes)
       
       let msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n`
