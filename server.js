@@ -735,6 +735,19 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 })
 
 // ========================
+// 🔐 FUNÇÃO GERAR TOKEN (SEM BLOQUEIO DE ROTAS)
+// ========================
+function gerarToken() {
+  return jwt.sign(
+    { 
+      role: 'medico',
+      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 8) // Expira em 8 horas
+    },
+    process.env.JWT_SECRET
+  )
+}
+
+// ========================
 // 👨‍⚕️ LOGIN
 // ========================
 app.post('/login', (req, res) => {
