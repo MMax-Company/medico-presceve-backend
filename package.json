@@ -8,11 +8,16 @@
     "dev": "nodemon server.js",
     "generate-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
   },
-  "keywords": ["telemedicina", "stripe", "whatsapp", "express"],
+  "keywords": [
+    "telemedicina",
+    "stripe",
+    "whatsapp",
+    "express"
+  ],
   "author": "Marketing-cvl",
   "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.0",
+    "axios": "^1.15.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -20,6 +25,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "pdfkit": "^0.14.0",
+    "pg": "^8.20.0",
     "stripe": "^14.16.0",
     "uuid": "^9.0.1"
   },
