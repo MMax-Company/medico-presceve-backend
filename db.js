@@ -43,6 +43,22 @@ function initDB() {
   }).catch(err => {
     console.error('❌ Erro ao criar tabela:', err);
   });
+
+  // Criar tabela de fila de suporte
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS fila_suporte (
+      id SERIAL PRIMARY KEY,
+      telefone VARCHAR(20) NOT NULL,
+      nome VARCHAR(255) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'aguardando',
+      criado_em TIMESTAMP DEFAULT NOW(),
+      atualizado_em TIMESTAMP DEFAULT NOW()
+    )
+  `).then(() => {
+    console.log('✅ Tabela "fila_suporte" criada/verificada com sucesso!');
+  }).catch(err => {
+    console.error('❌ Erro ao criar tabela fila_suporte:', err);
+  });
   
   return pool;
 }
@@ -291,6 +307,79 @@ async function closeConnection() {
 }
 
 // ========================
+// 📞 FILA DE SUPORTE
+// ========================
+
+/**
+ * Adiciona um paciente à fila de suporte.
+ * @param {string} telefone - Número de telefone do paciente (somente dígitos, 10-11 chars).
+ * @param {string} nome - Nome do paciente.
+ * @returns {Object|null} Registro inserido ou null em caso de erro.
+ */
+async function adicionarFilaSuporte(telefone, nome) {
+  const db = initDB();
+  if (!db) return null;
+
+  try {
+    const result = await db.query(
+      `INSERT INTO fila_suporte (telefone, nome, status, criado_em, atualizado_em)
+       VALUES ($1, $2, 'aguardando', NOW(), NOW())
+       RETURNING *`,
+      [telefone, nome]
+    );
+    return result.rows[0] || null;
+  } catch (err) {
+    console.error('Erro ao adicionar à fila de suporte:', err);
+    return null;
+  }
+}
+
+/**
+ * Retorna todos os pacientes com status 'aguardando', ordenados por criado_em ASC.
+ * @returns {Array} Lista de registros da fila.
+ */
+async function getFilaSuporte() {
+  const db = initDB();
+  if (!db) return [];
+
+  try {
+    const result = await db.query(
+      `SELECT * FROM fila_suporte
+       WHERE status = 'aguardando'
+       ORDER BY criado_em ASC`
+    );
+    return result.rows;
+  } catch (err) {
+    console.error('Erro ao buscar fila de suporte:', err);
+    return [];
+  }
+}
+
+/**
+ * Marca um paciente como respondido e o remove da fila ativa.
+ * @param {number} id - ID do registro na fila.
+ * @returns {Object|null} Registro atualizado ou null se não encontrado/erro.
+ */
+async function responderFilaSuporte(id) {
+  const db = initDB();
+  if (!db) return null;
+
+  try {
+    const result = await db.query(
+      `UPDATE fila_suporte
+       SET status = 'respondido', atualizado_em = NOW()
+       WHERE id = $1 AND status = 'aguardando'
+       RETURNING *`,
+      [id]
+    );
+    return result.rows[0] || null;
+  } catch (err) {
+    console.error('Erro ao responder fila de suporte:', err);
+    return null;
+  }
+}
+
+// ========================
 // 📤 EXPORTAR TODAS AS FUNÇÕES
 // ========================
 module.exports = {
@@ -305,5 +394,8 @@ module.exports = {
   deletarAtendimento,
   deletarAtendimentosAntigos,
   healthCheck,
-  closeConnection
+  closeConnection,
+  adicionarFilaSuporte,
+  getFilaSuporte,
+  responderFilaSuporte
 };

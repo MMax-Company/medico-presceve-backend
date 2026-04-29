@@ -11,6 +11,11 @@ const { v4: uuidv4 } = require('uuid')
 const fs = require('fs')
 const path = require('path')
 const PDFDocument = require('pdfkit')
+const {
+  adicionarFilaSuporte,
+  getFilaSuporte,
+  responderFilaSuporte
+} = require('./db')
 
 const app = express()
 const PORT = process.env.PORT || 3002
@@ -740,6 +745,142 @@ app.post('/api/enviar-whatsapp', async (req, res) => {
     res.json({ success: true })
   } catch(e) {
     res.status(500).json({ error: e.message })
+  }
+})
+
+// ========================
+// 📞 FILA DE SUPORTE (persistente)
+// ========================
+
+// Validação de telefone: aceita 10 ou 11 dígitos (com ou sem DDD)
+function validarTelefone(telefone) {
+  const digits = String(telefone || '').replace(/\D/g, '')
+  return digits.length >= 10 && digits.length <= 11
+}
+
+// POST /suporte/entrar — paciente entra na fila
+app.post('/suporte/entrar', async (req, res) => {
+  try {
+    const { telefone, nome } = req.body
+
+    if (!telefone || !nome) {
+      return res.status(400).json({ error: 'Os campos "telefone" e "nome" são obrigatórios.' })
+    }
+
+    const nomeTrimmed = String(nome).trim()
+    if (nomeTrimmed.length < 2 || nomeTrimmed.length > 255) {
+      return res.status(400).json({ error: 'O nome deve ter entre 2 e 255 caracteres.' })
+    }
+
+    if (!validarTelefone(telefone)) {
+      return res.status(400).json({ error: 'Número de telefone inválido. Informe DDD + número (10 ou 11 dígitos).' })
+    }
+
+    const telefoneLimpo = String(telefone).replace(/\D/g, '')
+
+    const registro = await adicionarFilaSuporte(telefoneLimpo, nomeTrimmed)
+    if (!registro) {
+      return res.status(503).json({ error: 'Não foi possível entrar na fila. Tente novamente.' })
+    }
+
+    console.log(`📞 Paciente entrou na fila de suporte: ${nomeTrimmed} (${telefoneLimpo})`)
+    res.status(201).json({
+      success: true,
+      id: registro.id,
+      nome: registro.nome,
+      status: registro.status,
+      criado_em: registro.criado_em
+    })
+  } catch (e) {
+    console.error('❌ Erro em POST /suporte/entrar:', e)
+    res.status(500).json({ error: 'Erro interno ao entrar na fila.' })
+  }
+})
+
+// GET /suporte/fila — médico visualiza a fila
+app.get('/suporte/fila', async (req, res) => {
+  try {
+    const fila = await getFilaSuporte()
+    res.json(fila)
+  } catch (e) {
+    console.error('❌ Erro em GET /suporte/fila:', e)
+    res.status(500).json({ error: 'Erro interno ao buscar a fila.' })
+  }
+})
+
+// POST /suporte/responder — médico responde e remove da fila
+app.post('/suporte/responder', async (req, res) => {
+  try {
+    const { id, mensagem } = req.body
+
+    if (!id) {
+      return res.status(400).json({ error: 'O campo "id" é obrigatório.' })
+    }
+
+    const idNum = parseInt(id, 10)
+    if (isNaN(idNum) || idNum <= 0) {
+      return res.status(400).json({ error: 'O campo "id" deve ser um número inteiro positivo.' })
+    }
+
+    if (!mensagem || String(mensagem).trim().length === 0) {
+      return res.status(400).json({ error: 'O campo "mensagem" é obrigatório e não pode estar vazio.' })
+    }
+
+    const mensagemTrimmed = String(mensagem).trim()
+    if (mensagemTrimmed.length > 4096) {
+      return res.status(400).json({ error: 'A mensagem não pode ultrapassar 4096 caracteres.' })
+    }
+
+    const registro = await responderFilaSuporte(idNum)
+    if (!registro) {
+      return res.status(404).json({ error: 'Paciente não encontrado na fila ou já foi respondido.' })
+    }
+
+    const instance = process.env.ULTRAMSG_INSTANCE
+    const token = process.env.ULTRAMSG_TOKEN
+
+    if (!instance || !token) {
+      console.warn('⚠️ ULTRAMSG_INSTANCE ou ULTRAMSG_TOKEN não configurados — mensagem não enviada.')
+      return res.json({
+        success: true,
+        aviso: 'Paciente removido da fila, mas WhatsApp não enviado (credenciais UltraMsg ausentes).',
+        registro
+      })
+    }
+
+    const telefoneLimpo = String(registro.telefone).replace(/\D/g, '')
+    if (!validarTelefone(telefoneLimpo)) {
+      console.warn(`⚠️ Telefone inválido para envio WhatsApp: ${registro.telefone}`)
+      return res.json({
+        success: true,
+        aviso: 'Paciente removido da fila, mas o número de telefone é inválido para envio de WhatsApp.',
+        registro
+      })
+    }
+
+    try {
+      await axios.post(
+        `https://api.ultramsg.com/${instance}/messages/chat`,
+        new URLSearchParams({
+          token,
+          to: `+55${telefoneLimpo}`,
+          body: mensagemTrimmed
+        }),
+        { timeout: 10000 }
+      )
+      console.log(`✅ WhatsApp de suporte enviado para ${telefoneLimpo}`)
+    } catch (waErr) {
+      console.error(`❌ Falha ao enviar WhatsApp para ${telefoneLimpo}:`, waErr.message)
+      return res.status(502).json({
+        error: 'Paciente removido da fila, mas houve falha ao enviar a mensagem WhatsApp.',
+        detalhe: waErr.message
+      })
+    }
+
+    res.json({ success: true, registro })
+  } catch (e) {
+    console.error('❌ Erro em POST /suporte/responder:', e)
+    res.status(500).json({ error: 'Erro interno ao responder paciente.' })
   }
 })
 
