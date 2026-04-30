@@ -1510,3 +1510,23 @@ app.listen(PORT, '0.0.0.0', () => {
 })
 
 module.exports = app
+
+
+
+// ===== ROTA DE TESTE TRIAGEM =====
+app.post('/api/triagem', (req, res) => {
+  const { telefone, nome, sintomas } = req.body;
+
+  console.log('Triagem recebida:', telefone, nome, sintomas);
+
+  res.json({
+    status: 'ok',
+    message: 'Triagem recebida com sucesso'
+  });
+});
+
+// ===== HEALTHCHECK =====
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
