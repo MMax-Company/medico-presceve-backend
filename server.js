@@ -1514,19 +1514,29 @@ module.exports = app
 
 
 // ===== ROTA DE TESTE TRIAGEM =====
+
+// ===== HEALTHCHECK =====
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.post('/api/triagem', (req, res) => {
   const { telefone, nome, sintomas } = req.body;
+
+  let elegivel = true;
+
+  if (!sintomas || sintomas.includes("dor forte") || sintomas.includes("febre")) {
+    elegivel = false;
+  }
 
   console.log('Triagem recebida:', telefone, nome, sintomas);
 
   res.json({
     status: 'ok',
-    message: 'Triagem recebida com sucesso'
+    elegivel: elegivel,
+    mensagem: elegivel
+      ? 'Paciente elegível para renovação'
+      : 'Paciente NÃO elegível - procurar atendimento presencial'
   });
-});
-
-// ===== HEALTHCHECK =====
-app.get('/healthz', (req, res) => {
-  res.json({ status: 'ok' });
 });
 
