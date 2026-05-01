@@ -118,8 +118,6 @@ const db = {
 // ========================
 // 📱 WHATSAPP (CLOUD API OFICIAL)
 // ========================
-const axios = require('axios')
-
 async function enviarWhatsAppOficial(numero, mensagem) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   const token = process.env.WHATSAPP_TOKEN
