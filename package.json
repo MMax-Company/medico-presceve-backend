@@ -1,20 +1,35 @@
 {
-  "name": "doctor-backend",
-  "version": "3.0.0",
+  "name": "medico-prescreve-backend",
+  "version": "1.0.0",
+  "description": "Sistema de telemedicina para renovação de receitas",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "generate-key": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
   },
+  "keywords": [
+    "telemedicina",
+    "stripe",
+    "whatsapp",
+    "express"
+  ],
+  "author": "Marketing-cvl",
+  "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.0",
+    "axios": "^1.15.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.0",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "express-rate-limit": "^7.0.0",
+    "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "pdfkit": "^0.14.0",
     "pg": "^8.20.0",
-    "stripe": "^14.0.0",
-    "uuid": "^9.0.0"
+    "stripe": "^14.16.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }
