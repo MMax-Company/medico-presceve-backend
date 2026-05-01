@@ -549,7 +549,17 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
     }
   }
 
-  res.json({ received: true })
+res.json({
+  success: true,
+  id,
+  elegivel,
+  payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null
+})
+
+  } catch (e) {
+    console.error('❌ Erro na triagem:', e)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // ========================
@@ -899,17 +909,24 @@ app.post('/api/teste/simular-pagamento/:id', async (req, res) => {
     at.status = 'FILA'
     at.pago_em = new Date().toISOString()
     
-    await db.salvarAtendimento(at)
-    
-    const telefone = decrypt(at.paciente_telefone)
-    if (telefone) {
-      await enviarWhatsApp(telefone, '✅ Pagamento confirmado! Você está na fila.')
-    }
-    
-    res.json({ success: true, message: 'Pagamento simulado com sucesso', status: at.status })
-  } catch(e) {
-    res.status(500).json({ error: e.message })
-  }
+await db.salvarAtendimento(at)
+
+const telefone = decrypt(at.paciente_telefone)
+const telefoneLimpo = (telefone || '').replace(/\D/g, '')
+
+if (telefoneLimpo && telefoneLimpo.length >= 11) {
+  await enviarWhatsAppOficial(
+    telefoneLimpo,
+    '✅ Pagamento confirmado! Você está na fila de atendimento.'
+  )
+} else {
+  console.warn('⚠️ Telefone inválido:', telefoneLimpo)
+}
+
+res.json({
+  success: true,
+  message: 'Pagamento simulado com sucesso',
+  status: at.status
 })
 
 // ========================
