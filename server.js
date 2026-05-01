@@ -465,6 +465,11 @@ res.json({
   payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null
 })
 
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ========================
 // 💳 PAGAMENTO
 // ========================
