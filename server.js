@@ -382,7 +382,7 @@ app.get('/receita-pdf/:id', async (req, res) => {
 // ========================
 // 🧠 TRIAGEM
 // ========================
-('/api/webhook/triagem', async (req, res) => {
+app.post('/api/webhook/triagem', async (req, res) => {
   try {
     const { paciente = {}, triagem = {} } = req.body
 
@@ -463,6 +463,10 @@ res.json({
   id,
   elegivel,
   payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null
+})
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // ========================
