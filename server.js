@@ -114,33 +114,50 @@ const db = {
   }
 }
 
-// ========================
-// 📱 WHATSAPP
-// ========================
-async function enviarWhatsApp(numero, msg) {
-  if (!numero || !process.env.ULTRAMSG_INSTANCE || !process.env.ULTRAMSG_TOKEN) return
 
-  const tel = numero.replace(/\D/g, '')
-  if (tel.length < 11) {
-    console.warn('⚠️ Número inválido para WhatsApp:', numero)
+// ========================
+// 📱 WHATSAPP (CLOUD API OFICIAL)
+// ========================
+const axios = require('axios')
+
+async function enviarWhatsAppOficial(numero, mensagem) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const token = process.env.WHATSAPP_TOKEN
+
+  if (!numero || !phoneNumberId || !token) {
+    console.warn('⚠️ WhatsApp não configurado corretamente')
+    return
+  }
+
+  const telefone = numero.replace(/\D/g, '')
+
+  if (telefone.length < 11) {
+    console.warn('⚠️ Número inválido:', telefone)
     return
   }
 
   try {
     await axios.post(
-      `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
-      new URLSearchParams({
-        token: process.env.ULTRAMSG_TOKEN,
-        to: `+55${tel}`,
-        body: msg
-      }),
-      { timeout: 10000 }
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: telefone,
+        text: { body: mensagem }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      }
     )
-    console.log(`✅ WhatsApp enviado para ${tel}`)
-  } catch(e) {
-    console.error("❌ WhatsApp erro:", e.message)
+
+    console.log(`✅ WhatsApp oficial enviado para ${telefone}`)
+  } catch (e) {
+    console.error('❌ Erro WhatsApp:', e.response?.data || e.message)
   }
 }
+
 
 // ========================
 // 🛡️ MIDDLEWARES
@@ -917,10 +934,13 @@ app.get('/', (req, res) => {
 // 👇 SUA ROTA DE TESTE
 app.get('/teste-whatsapp', async (req, res) => {
   try {
+    const numero = process.env.TEST_PHONE_NUMBER || '5511968123900'
+
     await enviarWhatsAppOficial(
-      '5511968123900',
+      numero,
       '🚀 Teste WhatsApp funcionando!'
     )
+
     res.send('OK')
   } catch (e) {
     console.error(e)
@@ -941,7 +961,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔐 JWT Auth: Ativo`)
   console.log(`🔒 Criptografia: AES-256-CBC ativa`)
   console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Conectado' : '⚠️ Não configurado'}`)
-  console.log(`📱 WhatsApp: ${process.env.ULTRAMSG_INSTANCE ? 'Ativo' : '⚠️ Não configurado'}`)
+  console.log(`📱 WhatsApp: ${process.env.WHATSAPP_TOKEN ? 'Ativo' : '⚠️ Não configurado'}`)
   console.log(`🏥 Painel Médico: ${BASE_URL}/painel-medico`)
   console.log('='.repeat(60))
   console.log(`✅ Servidor iniciado com sucesso!\n`)
