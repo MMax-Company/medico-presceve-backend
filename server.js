@@ -382,7 +382,7 @@ app.get('/receita-pdf/:id', async (req, res) => {
 // ========================
 // 🧠 TRIAGEM
 // ========================
-app.post('/api/webhook/triagem', async (req, res) => {
+('/api/webhook/triagem', async (req, res) => {
   try {
     const { paciente = {}, triagem = {} } = req.body
 
@@ -499,6 +499,7 @@ app.get('/api/payment/:id', async (req, res) => {
 // ========================
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature']
+
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
     console.warn('⚠️ STRIPE_WEBHOOK_SECRET não configurado')
     return res.status(400).send('Webhook secret não configurado')
@@ -506,59 +507,70 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 
   let event
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    )
   } catch (err) {
     console.error(`❌ Webhook signature error: ${err.message}`)
     return res.status(400).send(`Webhook Error: ${err.message}`)
   }
 
-  const eventId = event.id
-  const eventType = event.type
+  try {
+    const eventId = event.id
+    const eventType = event.type
 
-  const jaProcessado = await webhookDb.eventoJaProcessado(eventId)
-  if (jaProcessado) {
-    console.log(`⚠️ Evento ${eventId} já processado. Ignorando.`)
-    return res.json({ received: true, alreadyProcessed: true })
-  }
-
-  if (eventType === 'checkout.session.completed') {
-    const session = event.data.object
-    const atendimentoId = session.metadata?.atendimentoId
-
-    if (atendimentoId) {
-      const at = await db.buscarAtendimentoPorId(atendimentoId)
-      
-      if (!at) {
-        console.error(`❌ Atendimento não encontrado: ${atendimentoId}`)
-        return res.status(404).json({ error: 'Atendimento não encontrado' })
-      }
-
-      if (at.pagamento) {
-        console.log(`⚠️ Atendimento ${atendimentoId} já está com pagamento confirmado.`)
-        await webhookDb.salvarEvento(eventId, eventType, atendimentoId)
-        return res.json({ received: true, alreadyPaid: true })
-      }
-
-      await db.atualizarStatusPagamento(atendimentoId, true, 'FILA')
-      await webhookDb.salvarEvento(eventId, eventType, atendimentoId)
-
-      const telefone = decrypt(at.paciente_telefone)
-      const telefoneLimpo = (telefone || '').replace(/\D/g, '')
-
-      if (telefoneLimpo && telefoneLimpo.length >= 11) {
-        await enviarWhatsAppOficial(
-          telefoneLimpo,
-          '✅ Pagamento confirmado! Você está na fila de atendimento.'
-        )
-      }
-
-      console.log(`💰 Pagamento confirmado: ${atendimentoId}`)
+    const jaProcessado = await webhookDb.eventoJaProcessado(eventId)
+    if (jaProcessado) {
+      console.log(`⚠️ Evento ${eventId} já processado. Ignorando.`)
+      return res.json({ received: true, alreadyProcessed: true })
     }
+
+    if (eventType === 'checkout.session.completed') {
+      const session = event.data.object
+      const atendimentoId = session.metadata?.atendimentoId
+
+      if (atendimentoId) {
+        const at = await db.buscarAtendimentoPorId(atendimentoId)
+
+        if (!at) {
+          console.error(`❌ Atendimento não encontrado: ${atendimentoId}`)
+          return res.status(404).json({ error: 'Atendimento não encontrado' })
+        }
+
+        if (at.pagamento) {
+          console.log(`⚠️ Atendimento ${atendimentoId} já está com pagamento confirmado.`)
+          await webhookDb.salvarEvento(eventId, eventType, atendimentoId)
+          return res.json({ received: true, alreadyPaid: true })
+        }
+
+        await db.atualizarStatusPagamento(atendimentoId, true, 'FILA')
+        await webhookDb.salvarEvento(eventId, eventType, atendimentoId)
+
+        const telefone = decrypt(at.paciente_telefone)
+        const telefoneLimpo = (telefone || '').replace(/\D/g, '')
+
+        if (telefoneLimpo && telefoneLimpo.length >= 11) {
+          await enviarWhatsAppOficial(
+            telefoneLimpo,
+            '✅ Pagamento confirmado! Você está na fila de atendimento.'
+          )
+        } else {
+          console.warn('⚠️ Telefone inválido:', telefoneLimpo)
+        }
+
+        console.log(`💰 Pagamento confirmado: ${atendimentoId}`)
+      }
+    }
+
+    res.json({ received: true })
+  } catch (e) {
+    console.error('❌ Erro no processamento do webhook:', e)
+    res.status(500).json({ error: e.message })
   }
-
-  res.json({ received: true })
 })
-
+    
 // ========================
 // 👨‍⚕️ LOGIN
 // ========================
