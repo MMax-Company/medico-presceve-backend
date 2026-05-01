@@ -333,6 +333,20 @@ app.post('/login', (req, res) => {
 })
 
 // ========================
+// 📱 WEBHOOK WHATSAPP
+// ========================
+app.post('/webhook/whatsapp', (req, res) => {
+  try {
+    console.log('📩 WhatsApp recebido:')
+    console.log(JSON.stringify(req.body, null, 2))
+  } catch (e) {
+    console.error('Erro webhook WhatsApp:', e)
+  }
+
+  res.sendStatus(200)
+})
+
+// ========================
 // 📋 ROTAS PROTEGIDAS
 // ========================
 
