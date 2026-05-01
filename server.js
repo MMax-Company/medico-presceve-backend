@@ -244,27 +244,6 @@ const db = {
 }
 
 // ========================
-// 📱 WHATSAPP
-// ========================
-async function enviarWhatsApp(numero, msg) {
-  if (!numero || !process.env.ULTRAMSG_INSTANCE || !process.env.ULTRAMSG_TOKEN) return
-  const tel = numero.replace(/\D/g, '')
-  if (tel.length < 11) return
-  try {
-    await axios.post(
-      `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
-      new URLSearchParams({
-        token: process.env.ULTRAMSG_TOKEN,
-        to: `+55${tel}`,
-        body: msg
-      }),
-      { timeout: 10000 }
-    )
-    console.log(`✅ WhatsApp enviado para ${tel}`)
-  } catch(e) {}
-}
-
-// ========================
 // 📄 GERADOR DE PDF
 // ========================
 async function gerarReceitaPDF(atendimento, prontuario, orientacoes) {
@@ -454,20 +433,36 @@ app.post('/api/webhook/triagem', async (req, res) => {
       locked_until: null
     }
 
-    await db.salvarAtendimento(atendimento)
+await db.salvarAtendimento(atendimento)
 
-    if (elegivel) {
-      const url = `${BASE_URL}/api/payment/${id}`
-      await enviarWhatsApp(paciente.telefone, `✅ Olá ${paciente.nome}! Sua triagem foi aprovada! Link: ${url}`)
-    } else {
-      await enviarWhatsApp(paciente.telefone, '❌ Não elegível para teleconsulta.')
-    }
+const telefone = (paciente.telefone || '').replace(/\D/g, '')
 
-    res.json({ success: true, id, elegivel, payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null })
-  } catch(e) {
-    console.error('❌ Erro na triagem:', e)
-    res.status(500).json({ error: e.message })
+if (telefone && telefone.length >= 11) {
+
+  if (elegivel) {
+    const url = `${BASE_URL}/api/payment/${id}`
+
+    await enviarWhatsAppOficial(
+      telefone,
+      `✅ Olá ${paciente.nome}! Sua triagem foi aprovada!\n\n💳 Acesse para pagamento:\n${url}`
+    )
+
+  } else {
+    await enviarWhatsAppOficial(
+      telefone,
+      '❌ No momento você não se enquadra para teleconsulta. Procure atendimento presencial.'
+    )
   }
+
+} else {
+  console.warn('⚠️ Telefone inválido:', telefone)
+}
+
+res.json({
+  success: true,
+  id,
+  elegivel,
+  payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null
 })
 
 // ========================
@@ -1537,6 +1532,40 @@ app.post('/webhook/whatsapp', (req, res) => {
   res.sendStatus(200);
 });
 
+// ========================
+// 📱 WHATSAPP (OFICIAL)
+// ========================
+async function enviarWhatsAppOficial(numero, mensagem) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_TOKEN;
+
+  if (!numero || !phoneNumberId || !token) {
+    console.warn('⚠️ WhatsApp não configurado corretamente');
+    return;
+  }
+
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: numero,
+        text: { body: mensagem }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    console.log(`✅ WhatsApp oficial enviado para ${numero}`);
+  } catch (e) {
+    console.error("❌ Erro WhatsApp:", e.response?.data || e.message);
+  }
+}    
+    
 // ========================
 // 🚀 INICIA SERVIDOR
 // ========================
