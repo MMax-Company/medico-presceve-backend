@@ -1517,8 +1517,22 @@ app.get('/webhook/whatsapp', (req, res) => {
 });
 
 app.post('/webhook/whatsapp', (req, res) => {
-  console.log('📩 Mensagem recebida do WhatsApp:');
-  console.log(JSON.stringify(req.body, null, 2));
+  const body = req.body;
+
+  try {
+    const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (message) {
+      const from = message.from;
+      const text = message.text?.body;
+
+      console.log('📱 Número:', from);
+      console.log('💬 Mensagem:', text);
+    }
+
+  } catch (err) {
+    console.error('Erro ao processar mensagem:', err);
+  }
 
   res.sendStatus(200);
 });
