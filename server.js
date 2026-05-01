@@ -925,7 +925,7 @@ app.get('/', (req, res) => {
       'GET /painel-medico',
       'GET /healthz'
     ],
-    documentacao: 'https://github.com/Marketing-cvl/doctor-prescreve-backend'
+    documentacao: 'https://github.com/MMax-Company/doctor-repositorio-central'
   })
 })
 
