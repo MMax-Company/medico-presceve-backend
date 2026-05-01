@@ -1565,28 +1565,13 @@ async function enviarWhatsAppOficial(numero, mensagem) {
     console.error("❌ Erro WhatsApp:", e.response?.data || e.message);
   }
 }    
-    
-// ========================
-// 🚀 INICIA SERVIDOR
-// ========================
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Servidor rodando na porta ${PORT}`)
-  console.log(`🏥 Painel: ${BASE_URL}/painel-medico`)
-  console.log(`📋 Prontuário: ${BASE_URL}/prontuario/:id`)
-  console.log(`💳 Stripe Webhook: ${BASE_URL}/webhook/stripe\n`)
-})
-
-module.exports = app
-
-
-
-// ===== ROTA DE TESTE TRIAGEM =====
 
 // ===== HEALTHCHECK =====
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// ===== ROTA DE TESTE TRIAGEM =====
 app.post('/api/triagem', (req, res) => {
   const { telefone, nome, sintomas } = req.body;
 
@@ -1605,5 +1590,16 @@ app.post('/api/triagem', (req, res) => {
       ? 'Paciente elegível para renovação'
       : 'Paciente NÃO elegível - procurar atendimento presencial'
   });
-});
+});    
 
+// ========================
+// 🚀 INICIA SERVIDOR
+// ========================
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Servidor rodando na porta ${PORT}`)
+  console.log(`🏥 Painel: ${BASE_URL}/painel-medico`)
+  console.log(`📋 Prontuário: ${BASE_URL}/prontuario/:id`)
+  console.log(`💳 Stripe Webhook: ${BASE_URL}/webhook/stripe\n`)
+})
+
+module.exports = app
