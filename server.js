@@ -1499,6 +1499,30 @@ app.get('/success', (req, res) => res.send('<h1>✅ Pagamento Confirmado!</h1><p
 app.get('/cancel', (req, res) => res.send('<h1>❌ Pagamento Cancelado</h1><a href="/">Voltar</a>'))
 app.get('/', (req, res) => res.json({ service: 'Doctor Prescreve', status: 'online' }))
 
+// 🔌 Webhook WhatsApp (Meta)
+
+app.get('/webhook/whatsapp', (req, res) => {
+  const VERIFY_TOKEN = 'doctor_prescreve_token_123';
+
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode && token === VERIFY_TOKEN) {
+    console.log('Webhook verificado com sucesso!');
+    return res.status(200).send(challenge);
+  } else {
+    return res.sendStatus(403);
+  }
+});
+
+app.post('/webhook/whatsapp', (req, res) => {
+  console.log('📩 Mensagem recebida do WhatsApp:');
+  console.log(JSON.stringify(req.body, null, 2));
+
+  res.sendStatus(200);
+});
+
 // ========================
 // 🚀 INICIA SERVIDOR
 // ========================
