@@ -543,23 +543,20 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
       await webhookDb.salvarEvento(eventId, eventType, atendimentoId)
 
       const telefone = decrypt(at.paciente_telefone)
-      await enviarWhatsApp(telefone, '✅ Pagamento confirmado! Você está na fila.')
+      const telefoneLimpo = (telefone || '').replace(/\D/g, '')
+
+      if (telefoneLimpo && telefoneLimpo.length >= 11) {
+        await enviarWhatsAppOficial(
+          telefoneLimpo,
+          '✅ Pagamento confirmado! Você está na fila de atendimento.'
+        )
+      }
 
       console.log(`💰 Pagamento confirmado: ${atendimentoId}`)
     }
   }
 
-res.json({
-  success: true,
-  id,
-  elegivel,
-  payment_url: elegivel ? `${BASE_URL}/api/payment/${id}` : null
-})
-
-  } catch (e) {
-    console.error('❌ Erro na triagem:', e)
-    res.status(500).json({ error: e.message })
-  }
+  res.json({ received: true })
 })
 
 // ========================
