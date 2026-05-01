@@ -919,4 +919,4 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Servidor iniciado com sucesso!\n`)
 })
 
-module.exports = appx
+module.exports = app
