@@ -914,6 +914,20 @@ app.get('/', (req, res) => {
   })
 })
 
+// 👇 SUA ROTA DE TESTE
+app.get('/teste-whatsapp', async (req, res) => {
+  try {
+    await enviarWhatsAppOficial(
+      '5511968123900',
+      '🚀 Teste WhatsApp funcionando!'
+    )
+    res.send('OK')
+  } catch (e) {
+    console.error(e)
+    res.status(500).send('Erro')
+  }
+})
+
 // ========================
 // 🚀 INICIA SERVIDOR
 // ========================
