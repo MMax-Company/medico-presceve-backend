@@ -1063,14 +1063,10 @@ async function abrirMemed(data) {
     ]
   })
 
-  for (const med of data.medicacao) {
-    await MdHub.command.send("plataforma.prescricao", "addItem", {
-      nome: med.nome,
-      posologia: `<p>${med.posologia}</p>`,
-      quantidade: 30
-    })
-  }
-}
+  const medicamentos = data.map(med => ({
+  nome: med.nome,
+  posologia: `<p>${med.posologia}</p>` // Verifique se as crases estão certas
+}));
 
 // Evento da Memed → salva no backend
 MdHub.event.add("prescription:completed", async function (data) {
