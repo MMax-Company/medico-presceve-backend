@@ -533,7 +533,7 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
       const telefone = receita.paciente?.telefone
 
           if (telefone && receita.pdfUrl) {
-      await enviarReceitaWhatsApp(telefone, receita.pdfUrl}   
+      await enviarReceitaWhatsApp(telefone, receita.pdfUrl)   
     }
 
     res.json({ success: true, novoStatus })
