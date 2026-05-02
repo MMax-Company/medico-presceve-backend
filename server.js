@@ -1220,7 +1220,7 @@ app.get('/teste-whatsapp', async (req, res) => {
 // 🚀 INICIA SERVIDOR
 // ========================
 app.listen(PORT, '0.0.0.0', () => {
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {  
 console.log('\n' + '='.repeat(60))
   console.log('🚀 Doctor Prescreve Backend v4.1.0')
@@ -1245,17 +1245,3 @@ app.get('/healthz', (req, res) => {
 module.exports = app
 
 
-
-// 🏥 PÁGINAS PÚBLICAS E STATUS
-app.get('/', (req, res) => {
-  res.json({ status: 'online', versao: '4.1.0' });
-});
-app.get('/healthz', (req, res) => {
-  res.json({ status: 'ok', service: 'Doctor Prescreve' });
-});
-
-// 🚀 LIGAR O SERVIDOR (ÚLTIMA LINHA DO ARQUIVO)
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor MaxAesthetic rodando na porta ${PORT}`);
-});
