@@ -9,6 +9,71 @@ const rateLimit = require('express-rate-limit')
 const jwt = require('jsonwebtoken')
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy')
 
+// ========================
+// 🧠 MOTOR CLÍNICO
+// ========================
+
+function detectarTipo(texto) {
+  if (!texto) return 'OUTRO'
+  if (texto.includes('hipert') || texto.includes('pressão')) return 'HAS'
+  if (texto.includes('diabetes')) return 'DIABETES'
+  if (texto.includes('tireo')) return 'HIPOTIREOIDISMO'
+  return 'OUTRO'
+}
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function gerarQueixa(tipo) {
+  const base = {
+    HAS: [
+      "Paciente em acompanhamento por hipertensão arterial.",
+      "Paciente com diagnóstico prévio de HAS.",
+      "Paciente solicita renovação de anti-hipertensivo."
+    ],
+    DIABETES: [
+      "Paciente em acompanhamento por diabetes mellitus.",
+      "Paciente em uso contínuo de hipoglicemiante.",
+      "Paciente solicita continuidade do tratamento."
+    ],
+    HIPOTIREOIDISMO: [
+      "Paciente com hipotireoidismo em tratamento.",
+      "Paciente em uso contínuo de levotiroxina.",
+      "Paciente solicita renovação de medicação."
+    ]
+  }
+  return pick(base[tipo] || ["Paciente em acompanhamento clínico."])
+}
+
+function gerarHistoria(tipo) {
+  return "Paciente refere estabilidade do quadro clínico, sem intercorrências recentes."
+}
+
+function gerarConduta(tipo) {
+  return "Manter tratamento atual. Orientado acompanhamento regular."
+}
+
+function gerarMedicacao(tipo) {
+  const mapa = {
+    HAS: "Losartana 50mg",
+    DIABETES: "Metformina 850mg",
+    HIPOTIREOIDISMO: "Levotiroxina 50mcg"
+  }
+  return mapa[tipo] || "Uso contínuo conforme prescrição"
+}
+
+function gerarProntuario(at) {
+  const condicao = JSON.parse(decrypt(at.condicao || '{}'))
+
+  return {
+    queixa: gerarQueixa(condicao.tipo),
+    historia: gerarHistoria(condicao.tipo),
+    conduta: gerarConduta(condicao.tipo),
+    medicacao: gerarMedicacao(condicao.tipo)
+  }
+}
+
 const app = express()
 const PORT = process.env.PORT || 3002
 
@@ -205,6 +270,7 @@ app.post('/api/webhook/triagem', async (req, res) => {
     const { v4: uuidv4 } = require('uuid')
     const id = uuidv4()
     const texto = triagem.doencas.toLowerCase()
+    const tipo = detectarTipo(texto)
     
     const doencasElegiveis = ['has', 'diabetes', 'hipertensão', 'pressão', 'hipotireoidismo', 'dislipidemia']
     const elegivel = doencasElegiveis.some(d => texto.includes(d))
@@ -215,7 +281,11 @@ app.post('/api/webhook/triagem', async (req, res) => {
       paciente_telefone: encrypt(paciente.telefone || ''),
       paciente_cpf: encrypt(paciente.cpf || ''),
       paciente_email: encrypt(paciente.email || ''),
-      doencas: encrypt(texto),
+      condicao: encrypt(JSON.stringify({
+        doenca: texto,
+        tipo,
+        risco: "baixo"
+     })),
       elegivel,
       status: elegivel ? 'AGUARDANDO_PAGAMENTO' : 'INELEGIVEL',
       pagamento: false,
@@ -242,6 +312,31 @@ app.post('/api/webhook/triagem', async (req, res) => {
     })
   } catch(e) {
     console.error('❌ Erro em triagem:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ========================
+// 📋 PRONTUÁRIO AUTOMÁTICO
+// ========================
+app.get('/api/prontuario/:id', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) return res.status(404).json({ error: 'Não encontrado' })
+
+    const prontuario = gerarProntuario(at)
+
+    res.json({
+      paciente: {
+        nome: decrypt(at.paciente_nome),
+        cpf: decrypt(at.paciente_cpf),
+        telefone: decrypt(at.paciente_telefone),
+        email: decrypt(at.paciente_email)
+      },
+      condicao: JSON.parse(decrypt(at.condicao || '{}')),
+      ...prontuario
+    })
+  } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
@@ -374,7 +469,7 @@ app.get('/api/atendimentos', auth, async (req, res) => {
       paciente_telefone: decrypt(a.paciente_telefone),
       paciente_cpf: decrypt(a.paciente_cpf),
       paciente_email: decrypt(a.paciente_email),
-      doencas: decrypt(a.doencas)
+      condicao: JSON.parse(decrypt(a.condicao || '{}'))
     }))
     res.json(descriptografados)
   } catch(e) {
