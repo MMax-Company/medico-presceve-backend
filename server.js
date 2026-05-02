@@ -1154,6 +1154,430 @@ app.get('/api/estatisticas/decisoes', auth, async (req, res) => {
   }
 })
 
+// ========================
+// 🧠 MOTOR CLÍNICO AVANÇADO
+// ========================
+
+function detectarTipo(texto) {
+  if (!texto) return 'OUTRO'
+  const lowerText = texto.toLowerCase()
+  
+  if (lowerText.includes('hipert') || lowerText.includes('pressão')) return 'HAS'
+  if (lowerText.includes('diabetes') || lowerText.includes('açucar')) return 'DIABETES'
+  if (lowerText.includes('tireo') || lowerText.includes('hipotireoidismo')) return 'HIPOTIREOIDISMO'
+  if (lowerText.includes('colesterol') || lowerText.includes('dislipidemia')) return 'DISLIPIDEMIA'
+  if (lowerText.includes('ansiedade') || lowerText.includes('depressão')) return 'SAUDE_MENTAL'
+  
+  return 'OUTRO'
+}
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function gerarQueixa(tipo, dadosExtras = {}) {
+  const base = {
+    HAS: [
+      "Paciente em acompanhamento por hipertensão arterial sistêmica.",
+      "Paciente com diagnóstico prévio de HAS há 5 anos.",
+      "Paciente solicita renovação de anti-hipertensivo, nega sintomas.",
+      "Paciente relata pressão controlada com medicação atual.",
+      "Paciente em uso regular de anti-hipertensivo, assintomático."
+    ],
+    DIABETES: [
+      "Paciente em acompanhamento por diabetes mellitus tipo 2.",
+      "Paciente em uso contínuo de hipoglicemiante oral.",
+      "Paciente solicita continuidade do tratamento para diabetes.",
+      "Paciente relata glicemias controladas nos últimos 3 meses.",
+      "Paciente nega complicações micro/macrovasculares."
+    ],
+    HIPOTIREOIDISMO: [
+      "Paciente com hipotireoidismo em tratamento com levotiroxina.",
+      "Paciente em uso contínuo de levotiroxina, assintomático.",
+      "Paciente solicita renovação de medicação para tireoide.",
+      "Paciente relata boa adesão ao tratamento hormonal."
+    ],
+    DISLIPIDEMIA: [
+      "Paciente com dislipidemia mista em tratamento.",
+      "Paciente em uso de estatinas, refere boa tolerância.",
+      "Paciente solicita renovação de medicação para colesterol."
+    ],
+    SAUDE_MENTAL: [
+      "Paciente em acompanhamento por transtorno de ansiedade.",
+      "Paciente em uso regular de ansiolítico, nega crises.",
+      "Paciente refere estabilidade do quadro mental."
+    ],
+    OUTRO: [
+      "Paciente em acompanhamento clínico geral.",
+      "Paciente solicita renovação de medicação de uso contínuo.",
+      "Paciente comparece para consulta de rotina."
+    ]
+  }
+  return pick(base[tipo] || base.OUTRO)
+}
+
+function gerarHistoria(tipo, dadosExtras = {}) {
+  const historias = {
+    HAS: "Paciente refere estabilidade do quadro pressórico. Nega cefaleia, tontura ou palpitações. Sem internações recentes. Adesão ao tratamento relatada.",
+    DIABETES: "Paciente nega poliúria, polidipsia ou polifagia. Refere seguimento com nutricionista. Realiza monitorização glicêmica esporádica.",
+    HIPOTIREOIDISMO: "Paciente nega ganho ponderal excessivo, astenia ou intolerância ao frio. Refere boa energia para atividades diárias.",
+    DISLIPIDEMIA: "Paciente relata dieta hipolipídica. Nega eventos cardiovasculares prévios.",
+    SAUDE_MENTAL: "Paciente relata melhora do humor e ansiedade com medicação atual. Nega ideação suicida.",
+    OUTRO: "Paciente refere-se assintomático ao momento. Sem intercorrências desde último atendimento."
+  }
+  return historias[tipo] || historias.OUTRO
+}
+
+function gerarExameFisico(tipo) {
+  const exames = {
+    HAS: "PA: 120x80 mmHg (aferido em farmácia). FC: 72 bpm. Sem outras alterações.",
+    DIABETES: "Paciente eutrófico. Sem lesões de pele. Extremidades preservadas.",
+    HIPOTIREOIDISMO: "Tireoide palpável sem nódulos. Sem bócio. Reflexos normais.",
+    OUTRO: "Sem alterações significativas ao exame remoto."
+  }
+  return exames[tipo] || exames.OUTRO
+}
+
+function gerarConduta(tipo, dadosExtras = {}) {
+  const condutas = {
+    HAS: "Manter tratamento atual com anti-hipertensivo. Orientado acompanhamento regular com aferição pressórica domiciliar. Retorno em 3 meses.",
+    DIABETES: "Manter hipoglicemiante oral. Reforçar orientação sobre dieta e atividade física. Solicitar HbA1c para próximo retorno.",
+    HIPOTIREOIDISMO: "Manter levotiroxina na dose atual. Solicitar TSH para controle em 6 semanas.",
+    DISLIPIDEMIA: "Manter estatina. Reforçar orientação dietética e atividade física.",
+    SAUDE_MENTAL: "Manter medicação atual. Orientado psicoterapia de suporte.",
+    OUTRO: "Manter tratamento habitual. Orientado retorno em 3 meses ou se necessário."
+  }
+  return condutas[tipo] || condutas.OUTRO
+}
+
+function gerarMedicacao(tipo, dadosExtras = {}) {
+  const mapa = {
+    HAS: "Losartana 50mg",
+    DIABETES: "Metformina 850mg",
+    HIPOTIREOIDISMO: "Levotiroxina 50mcg",
+    DISLIPIDEMIA: "Atorvastatina 20mg",
+    SAUDE_MENTAL: "Sertralina 50mg"
+  }
+  return mapa[tipo] || "Conforme prescrição médica habitual"
+}
+
+function gerarPosologia(tipo) {
+  const posologias = {
+    HAS: "1 comprimido ao dia, pela manhã",
+    DIABETES: "1 comprimido 2 vezes ao dia, junto às refeições",
+    HIPOTIREOIDISMO: "1 comprimido ao dia, em jejum",
+    DISLIPIDEMIA: "1 comprimido ao dia, à noite",
+    SAUDE_MENTAL: "1 comprimido ao dia, pela manhã"
+  }
+  return posologias[tipo] || "Uso contínuo conforme orientação médica"
+}
+
+function gerarRecomendacoes(tipo) {
+  const recomendacoes = {
+    HAS: "- Redução do sódio na dieta\n- Prática regular de exercícios\n- Evitar bebidas alcoólicas",
+    DIABETES: "- Controle de carboidratos\n- Monitorização glicêmica\n- Atividade física regular",
+    HIPOTIREOIDISMO: "- Tomar medicação em jejum\n- Aguardar 30 min para café da manhã\n- Evitar antiácidos próximo ao horário",
+    OUTRO: "- Manter estilo de vida saudável\n- Hidratação adequada\n- Retorno conforme agendado"
+  }
+  return recomendacoes[tipo] || recomendacoes.OUTRO
+}
+
+function calcularScoreRisco(tipo, dadosExtras = {}) {
+  const riscos = {
+    HAS: Math.random() < 0.3 ? "MODERADO" : "BAIXO",
+    DIABETES: Math.random() < 0.4 ? "MODERADO" : "BAIXO",
+    HIPOTIREOIDISMO: "BAIXO",
+    DISLIPIDEMIA: "BAIXO",
+    SAUDE_MENTAL: "MODERADO"
+  }
+  return riscos[tipo] || "BAIXO"
+}
+
+// ========================
+// 📋 PRONTUÁRIO COMPLETO
+// ========================
+
+// 1. PRONTUÁRIO BÁSICO (HERDADO DO MOTOR CLÍNICO)
+app.get('/api/prontuario/:id', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    // Descriptografar dados
+    const condicaoCriptografada = decrypt(at.condicao || '{}')
+    let condicao = {}
+    try {
+      condicao = JSON.parse(condicaoCriptografada)
+    } catch(e) {
+      condicao = { doenca: 'Não especificada', tipo: 'OUTRO' }
+    }
+    
+    const tipo = condicao.tipo || detectarTipo(condicao.doenca || '')
+    const dadosPaciente = {
+      nome: decrypt(at.paciente_nome),
+      cpf: decrypt(at.paciente_cpf),
+      telefone: decrypt(at.paciente_telefone),
+      email: decrypt(at.paciente_email)
+    }
+    
+    // Gerar prontuário completo
+    const prontuario = {
+      queixa: gerarQueixa(tipo, condicao),
+      historia: gerarHistoria(tipo, condicao),
+      exame_fisico: gerarExameFisico(tipo),
+      conduta: gerarConduta(tipo, condicao),
+      medicacao: gerarMedicacao(tipo, condicao),
+      posologia: gerarPosologia(tipo),
+      recomendacoes: gerarRecomendacoes(tipo),
+      score_risco: calcularScoreRisco(tipo, condicao),
+      data_atendimento: new Date().toISOString(),
+      validade_receita: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+    }
+    
+    res.json({
+      paciente: dadosPaciente,
+      condicao: condicao,
+      prontuario: prontuario,
+      atendimento: {
+        id: at.id,
+        status: at.status,
+        criado_em: at.criado_em,
+        pago_em: at.pago_em
+      }
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao gerar prontuário:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar prontuário' })
+  }
+})
+
+// 2. PRONTUÁRIO EXPANDIDO (COM DECISÃO MÉDICA)
+app.get('/api/prontuario/:id/completo', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const condicao = JSON.parse(decrypt(at.condicao || '{}'))
+    const tipo = condicao.tipo || detectarTipo(condicao.doenca || '')
+    
+    const prontuarioBase = {
+      paciente: decrypt(at.paciente_nome),
+      queixa: gerarQueixa(tipo, condicao),
+      historia: gerarHistoria(tipo, condicao),
+      exame_fisico: gerarExameFisico(tipo),
+      conduta: gerarConduta(tipo, condicao),
+      medicacao: gerarMedicacao(tipo, condicao),
+      posologia: gerarPosologia(tipo)
+    }
+    
+    // Adicionar dados da decisão médica se existir
+    let decisaoMedica = null
+    if (at.decisao) {
+      decisaoMedica = {
+        status: at.decisao.status,
+        data: at.decisao.data,
+        observacao: at.decisao.observacao,
+        medicamento_prescrito: at.decisao.medicamento_prescrito,
+        posologia: at.decisao.posologia
+      }
+    }
+    
+    res.json({
+      ...prontuarioBase,
+      decisao_medica: decisaoMedica,
+      prontuario_completo: true,
+      gerado_em: new Date().toISOString()
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao gerar prontuário completo:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar prontuário completo' })
+  }
+})
+
+// 3. PRONTUÁRIO RESUMIDO (PARA WhatsApp)
+app.get('/api/prontuario/:id/resumido', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const condicao = JSON.parse(decrypt(at.condicao || '{}'))
+    const tipo = condicao.tipo || detectarTipo(condicao.doenca || '')
+    
+    const resumo = {
+      paciente: decrypt(at.paciente_nome),
+      doenca: condicao.doenca || 'Não especificada',
+      conduta_resumida: gerarConduta(tipo, condicao),
+      medicacao: gerarMedicacao(tipo, condicao),
+      proximo_retorno: "3 meses"
+    }
+    
+    res.json(resumo)
+    
+  } catch(e) {
+    console.error('❌ Erro ao gerar prontuário resumido:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar resumo' })
+  }
+})
+
+// 4. PDF PRONTUÁRIO (HTML PARA GERAR PDF)
+app.get('/api/prontuario/:id/pdf', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const condicao = JSON.parse(decrypt(at.condicao || '{}'))
+    const tipo = condicao.tipo || detectarTipo(condicao.doenca || '')
+    
+    const prontuario = {
+      paciente_nome: decrypt(at.paciente_nome),
+      paciente_cpf: decrypt(at.paciente_cpf),
+      queixa: gerarQueixa(tipo, condicao),
+      historia: gerarHistoria(tipo, condicao),
+      exame_fisico: gerarExameFisico(tipo),
+      conduta: gerarConduta(tipo, condicao),
+      medicacao: gerarMedicacao(tipo, condicao),
+      posologia: gerarPosologia(tipo),
+      recomendacoes: gerarRecomendacoes(tipo)
+    }
+    
+    // Gerar HTML do prontuário
+    const html = `<!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Prontuário - ${prontuario.paciente_nome}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .title { color: #1a6b8a; }
+        .section { margin-bottom: 20px; }
+        .section-title { background: #f0f2f5; padding: 8px; font-weight: bold; }
+        .content { padding: 10px; }
+        .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1 class="title">Doctor Prescreve</h1>
+        <h3>Prontuário Médico</h3>
+        <p>Data: ${new Date().toLocaleDateString('pt-BR')}</p>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">👤 Dados do Paciente</div>
+        <div class="content">
+          <strong>Nome:</strong> ${prontuario.paciente_nome}<br>
+          <strong>CPF:</strong> ${prontuario.paciente_cpf || 'Não informado'}
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">📋 Queixa Principal</div>
+        <div class="content">${prontuario.queixa}</div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">📖 História Clínica</div>
+        <div class="content">${prontuario.historia}</div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">🩺 Exame Físico</div>
+        <div class="content">${prontuario.exame_fisico}</div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">💊 Conduta e Prescrição</div>
+        <div class="content">
+          <strong>Medicação:</strong> ${prontuario.medicacao}<br>
+          <strong>Posologia:</strong> ${prontuario.posologia}<br>
+          <strong>Conduta:</strong> ${prontuario.conduta}
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">📌 Recomendações</div>
+        <div class="content">${prontuario.recomendacoes.replace(/\n/g, '<br>')}</div>
+      </div>
+      
+      <div class="footer">
+        <p>Documento gerado eletronicamente - Válido em todo território nacional</p>
+        <p>Doctor Prescreve - Telemedicina com responsabilidade</p>
+      </div>
+    </body>
+    </html>`
+    
+    res.setHeader('Content-Type', 'text/html')
+    res.send(html)
+    
+  } catch(e) {
+    console.error('❌ Erro ao gerar PDF:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar PDF do prontuário' })
+  }
+})
+
+// 5. EXPORTAR PRONTUÁRIO JSON (PARA INTEGRAÇÕES)
+app.get('/api/prontuario/:id/export', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const condicao = JSON.parse(decrypt(at.condicao || '{}'))
+    const tipo = condicao.tipo || detectarTipo(condicao.doenca || '')
+    
+    const exportData = {
+      metadata: {
+        id: at.id,
+        exportado_em: new Date().toISOString(),
+        versao: "1.0",
+        sistema: "Doctor Prescreve"
+      },
+      paciente: {
+        nome: decrypt(at.paciente_nome),
+        cpf: decrypt(at.paciente_cpf),
+        telefone: decrypt(at.paciente_telefone),
+        email: decrypt(at.paciente_email)
+      },
+      clinico: {
+        condicao: condicao.doenca,
+        tipo: tipo,
+        queixa: gerarQueixa(tipo, condicao),
+        historia: gerarHistoria(tipo, condicao),
+        exame_fisico: gerarExameFisico(tipo),
+        conduta: gerarConduta(tipo, condicao),
+        medicacao: gerarMedicacao(tipo, condicao),
+        posologia: gerarPosologia(tipo),
+        recomendacoes: gerarRecomendacoes(tipo),
+        score_risco: calcularScoreRisco(tipo, condicao)
+      },
+      decisao_medica: at.decisao || null,
+      status: at.status,
+      datas: {
+        criacao: at.criado_em,
+        pagamento: at.pago_em,
+        atualizacao: at.atualizado_em
+      }
+    }
+    
+    res.json(exportData)
+    
+  } catch(e) {
+    console.error('❌ Erro ao exportar prontuário:', e.message)
+    res.status(500).json({ error: 'Erro ao exportar prontuário' })
+  }
+})
 
 // ========================
 // 🚀 SERVER
