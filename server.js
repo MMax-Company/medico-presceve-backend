@@ -923,16 +923,6 @@ async function abrirProntuario(id) {
     footer: "Doctor Prescreve"
   })
 
-  for (const med of data.medicacao) {
-    await MdHub.command.send("plataforma.prescricao", "addItem", {
-      nome: med.nome,
-      posologia: `<p>${med.posologia}</p>`,
-      quantidade: 30
-    })
-  }
-
-}
-
   // 1. Abre prescrição
   await MdHub.command.send("plataforma.prescricao", "newPrescription")
 
@@ -1062,30 +1052,38 @@ async function salvarReceitaBackend(data) {
     body: JSON.stringify(data)
   })
 }
-      
-    async function recusarAtendimento(id) {
-         await fetch(API_URL + '/api/decisao/' + id, {
-        method: 'POST',
-        headers: {
-       'Content-Type': 'application/json',
-       'Authorization': 'Bearer ' + token
-     },
+
+async function abrirMemed(data) {
+
+  await MdHub.command.send("plataforma.prescricao", "newPrescription")
+
+  for (const med of data.medicacao) {
+    await MdHub.command.send("plataforma.prescricao", "addItem", {
+      nome: med.nome,
+      posologia: `<p>${med.posologia}</p>`,
+      quantidade: 30
+    })
+  }
+}
+
+async function recusarAtendimento(id) {
+  await fetch(API_URL + '/api/decisao/' + id, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
     body: JSON.stringify({ decisao: 'RECUSAR' })
   })
 
   alert('Paciente recusado')
 }
-        }
 
-        setInterval(() => {
-            if (document.getElementById('painel').style.display !== 'none') {
-                carregarDados()
-            }
-        }, 30000)
-    </script>
-</body>
-</html>`)
-})
+setInterval(() => {
+  if (document.getElementById('painel').style.display !== 'none') {
+    carregarDados()
+  }
+}, 30000)
 
 // ========================
 // 🏥 PUBLIC PAGES
