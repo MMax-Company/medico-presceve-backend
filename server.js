@@ -513,7 +513,7 @@ app.get('/api/estatisticas', auth, async (req, res) => {
   }
 })
 
-     app.post('/api/decisao/:id', auth, async (req, res) => {
+    app.post('/api/decisao/:id', auth, async (req, res) => {
   try {
     const { decisao } = req.body
     const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
@@ -525,10 +525,10 @@ app.get('/api/estatisticas', auth, async (req, res) => {
     const nome = decrypt(at.paciente_nome)
 
     if (decisao === 'APROVAR') {
-      const msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}`
+      const msg = `✅ Ótimas notícias, ${nome}!`
       await enviarWhatsApp(telefone, msg)
     } else {
-      const msg = `❌ Receita recusada.\n\n📋 Número: ${req.params.id.substring(0, 8)}`
+      const msg = `❌ Receita recusada`
       await enviarWhatsApp(telefone, msg)
     }
 
@@ -537,11 +537,6 @@ app.get('/api/estatisticas', auth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
-})
-    
-    await db.atualizarStatus(req.params.id, novoStatus)
-
-    const at = await db.buscar
 })
 
 app.post('/api/receita', auth, async (req, res) => {
