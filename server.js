@@ -479,114 +479,62 @@ app.post('/webhook/whatsapp', (req, res) => {
   res.sendStatus(200)
 })
 
-// ========================
-// 📋 ROTAS PROTEGIDAS
-// ========================
+// ==========================================
+// 🏥 ROTAS DO SERVIDOR (BACK-END)
+// ==========================================
 
-app.get('/api/atendimentos', auth, async (req, res) => {
-  try {
-    const list = await db.getAtendimentos()
-    const descriptografados = list.map(a => ({
-      ...a,
-      paciente_nome: decrypt(a.paciente_nome),
-      paciente_telefone: decrypt(a.paciente_telefone),
-      paciente_cpf: decrypt(a.paciente_cpf),
-      paciente_email: decrypt(a.paciente_email),
-      condicao: JSON.parse(decrypt(a.condicao || '{}'))
-    }))
-    res.json(descriptografados)
-  } catch(e) {
-    res.status(500).json({ error: e.message })
-  }
-})
+app.get('/healthz', (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(), 
+        version: '4.1' 
+    });
+});
 
-app.get('/api/fila', auth, async (req, res) => {
-  try {
-    const atendimentos = await db.getAtendimentos()
-    const fila = atendimentos.filter(a => a.pagamento && a.status === 'FILA')
-    res.json({
-      total: fila.length,
-      atendimentos: fila.map(a => ({
-        ...a,
-        paciente_nome: decrypt(a.paciente_nome),
-        paciente_telefone: decrypt(a.paciente_telefone),
-        doencas: decrypt(a.doencas)
-      }))
-    })
-  } catch(e) {
-    res.status(500).json({ error: e.message })
-  }
-})
+app.get('/success', (req, res) => {
+    res.send(`<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+        .box { background: white; padding: 40px; border-radius: 16px; max-width: 500px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #28a745; }
+        a { background: #1a6b8a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>✅ Pagamento Confirmado!</h1>
+        <p>Seu atendimento foi registrado com sucesso.</p>
+        <a href="/painel-medico">📊 Voltar ao Painel</a>
+    </div>
+</body>
+</html>`);
+});
 
-app.get('/api/estatisticas', auth, async (req, res) => {
-  try {
-    const a = await db.getAtendimentos()
-    res.json({
-      total: a.length,
-      elegiveis: a.filter(x => x.elegivel).length,
-      pagos: a.filter(x => x.pagamento).length,
-      naFila: a.filter(x => x.pagamento && x.status === 'FILA').length,
-      aprovados: a.filter(x => x.status === 'APROVADO').length,
-      recusados: a.filter(x => x.status === 'RECUSADO').length
-    })
-  } catch(e) {
-    res.status(500).json({ error: e.message })
-  }
-})
+app.get('/cancel', (req, res) => {
+    res.send(`<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+        .box { background: white; padding: 40px; border-radius: 16px; max-width: 500px; margin: 0 auto; }
+        h1 { color: #dc3545; }
+        a { background: #1a6b8a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>❌ Pagamento Cancelado</h1>
+        <a href="/">🏠 Voltar ao Início</a>
+    </div>
+</body>
+</html>`);
+});
 
-    app.post('/api/decisao/:id', auth, async (req, res) => {
-  try {
-    const { decisao } = req.body
-    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
-    
-    await db.atualizarStatus(req.params.id, novoStatus)
-
-    const at = await db.buscarAtendimentoPorId(req.params.id)
-    const telefone = decrypt(at.paciente_telefone)
-    const nome = decrypt(at.paciente_nome)
-
-    if (decisao === 'APROVAR') {
-      const msg = `✅ Ótimas notícias, ${nome}!`
-      await enviarWhatsApp(telefone, msg)
-    } else {
-      const msg = `❌ Receita recusada`
-      await enviarWhatsApp(telefone, msg)
-    }
-
-    res.json({ success: true, novoStatus })
-
-  } catch (e) {
-    res.status(500).json({ error: e.message })
-  }
-})
-
-app.post('/api/receita', auth, async (req, res) => {
-  try {
-    const receita = req.body
-
-    const id = receita.atendimentoId || crypto.randomUUID()
-    const file = `data/receita_${id}.json`
-
-    fs.writeFileSync(file, JSON.stringify(receita, null, 2))
-
-    const at = await db.buscarAtendimentoPorId(id)
-    const telefone = at ? decrypt(at.paciente_telefone) : null
-    const nome = at ? decrypt(at.paciente_nome) : ''
-
-    if (telefone && receita.pdfUrl) {
-      await enviarWhatsAppOficial(
-        telefone,
-        `📄 Olá ${nome}, sua receita está pronta:\n${receita.pdfUrl}`
-      )
-    }
-
-    res.json({ success: true })
-
-  } catch (e) {
-    res.status(500).json({ error: e.message })
-  }
-})
-
+// Garanta que o servidor está ouvindo a porta correta
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+});
 // ========================
 // 🏥 PAINEL MÉDICO
 // ========================
@@ -827,6 +775,106 @@ app.get('/painel-medico', (req, res) => {
         let token = ''
         let dadosAtendimentos = []
         let filtroAtual = 'todos'
+
+async function aprovarEPrescrever(id) {
+    try {
+        const res = await fetch(API_URL + '/api/decisao/' + id, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ decisao: 'APROVAR' })
+        });
+
+        const result = await res.json();
+        if (!result.success) {
+            return alert('Erro ao aprovar');
+        }
+
+        window.atendimentoAtual = id;
+
+        const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+
+        const data = await prontuarioRes.json();
+
+        // Chama a função da Memed passando os dados do prontuário
+        await abrirMemed(data);
+
+    } catch (e) {
+        console.error(e);
+        alert('Erro no processo');
+    }
+}
+
+async function salvarReceitaBackend(data) {
+    await fetch(API_URL + '/api/receita', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({
+            ...data,
+            atendimentoId: window.atendimentoAtual
+        })
+    });
+}
+
+async function abrirMemed(data) {
+    // Abrir a plataforma de prescrição
+    await MdHub.command.send("plataforma.prescricao", "newPrescription");
+
+    // Enviar dados adicionais do paciente
+    await MdHub.command.send("plataforma.prescricao", "setAdditionalData", {
+        header: [
+            { Nome: data.paciente.nome },
+            { CPF: data.paciente.cpf },
+            { Doença: data.condicao.doenca }
+        ]
+    });
+
+    // Se houver medicamentos pré-setados no seu objeto data:
+    if (data.medicamentos && Array.isArray(data.medicamentos)) {
+        const medicamentos = data.medicamentos.map(med => ({
+            nome: med.nome,
+            posologia: `<p>${med.posologia}</p>`
+        }));
+        // Aqui você enviaria os medicamentos para a Memed se necessário
+    }
+} // <--- CHAVE DE FECHAMENTO QUE ESTAVA FALTANDO
+
+// Evento da Memed → salva no backend
+MdHub.event.add("prescription:completed", async function (data) {
+    console.log("📄 Receita finalizada:", data);
+    await salvarReceitaBackend(data);
+});
+
+async function recusarAtendimento(id) {
+    try {
+        await fetch(API_URL + '/api/decisao/' + id, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ decisao: 'RECUSAR' })
+        });
+        alert('Paciente recusado');
+    } catch (e) {
+        alert('Erro ao recusar atendimento');
+    }
+}
+
+// Atualização automática do painel
+setInterval(() => {
+    const painel = document.getElementById('painel');
+    if (painel && painel.style.display !== 'none') {
+        carregarDados();
+    }
+}, 30000);
 
         async function login() {
             const senha = document.getElementById('senha').value
