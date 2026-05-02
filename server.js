@@ -1098,16 +1098,7 @@ async function abrirMemed(data) {
             { Doença: data.condicao.doenca }
         ]
     });
-
-    // Se houver medicamentos pré-setados no seu objeto data:
-    if (data.medicamentos && Array.isArray(data.medicamentos)) {
-        const medicamentos = data.medicamentos.map(med => ({
-            nome: med.nome,
-            posologia: `<p>${med.posologia}</p>`
-        }));
-        // Aqui você enviaria os medicamentos para a Memed se necessário
     }
-} // <--- CHAVE DE FECHAMENTO QUE ESTAVA FALTANDO
 
 // Evento da Memed → salva no backend
 MdHub.event.add("prescription:completed", async function (data) {
@@ -1229,7 +1220,9 @@ app.get('/teste-whatsapp', async (req, res) => {
 // 🚀 INICIA SERVIDOR
 // ========================
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('\n' + '='.repeat(60))
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {  
+console.log('\n' + '='.repeat(60))
   console.log('🚀 Doctor Prescreve Backend v4.1.0')
   console.log('='.repeat(60))
   console.log(`📡 Porta: ${PORT}`)
@@ -1242,9 +1235,27 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🏥 Painel Médico: ${BASE_URL}/painel-medico`)
   console.log('='.repeat(60))
   console.log(`✅ Servidor iniciado com sucesso!\n`)
-  const PORT = process.env.PORT || 3002;
-  app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+app.get('/', (req, res) => {
+  res.json({ status: 'online', versao: '4.1.0' });
+});
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok', service: 'Doctor Prescreve' });
 });
   
 module.exports = app
+
+
+
+// 🏥 PÁGINAS PÚBLICAS E STATUS
+app.get('/', (req, res) => {
+  res.json({ status: 'online', versao: '4.1.0' });
+});
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok', service: 'Doctor Prescreve' });
+});
+
+// 🚀 LIGAR O SERVIDOR (ÚLTIMA LINHA DO ARQUIVO)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor MaxAesthetic rodando na porta ${PORT}`);
+});
