@@ -594,6 +594,290 @@ app.get('/api/payment/status/:id', async (req, res) => {
   }
 })
 
+// ========================
+// 🔐 AUTENTICAÇÃO (SIMPLES E FUNCIONAL)
+// ========================
+
+// Gerar token JWT simples
+function gerarToken() {
+  return jwt.sign(
+    { role: 'medico', timestamp: Date.now() }, 
+    process.env.JWT_SECRET, 
+    { expiresIn: '8h' }
+  )
+}
+
+// Middleware de autenticação
+function auth(req, res, next) {
+  try {
+    const token = req.headers.authorization?.split(' ')[1]
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Token não fornecido' })
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    req.usuario = decoded
+    next()
+  } catch(e) {
+    return res.status(401).json({ error: 'Token inválido ou expirado' })
+  }
+}
+
+// Endpoint de login (SIMPLES)
+app.post('/login', (req, res) => {
+  try {
+    const { senha } = req.body
+    
+    if (!senha) {
+      return res.status(400).json({ error: 'Senha é obrigatória' })
+    }
+    
+    // Verificação simples de senha
+    if (senha !== process.env.MEDICO_PASS) {
+      return res.status(401).json({ error: 'Senha inválida' })
+    }
+    
+    const token = gerarToken()
+    
+    res.json({ 
+      success: true,
+      token: token,
+      mensagem: 'Login realizado com sucesso',
+      expira_em: '8 horas'
+    })
+  } catch(e) {
+    console.error('❌ Erro no login:', e.message)
+    res.status(500).json({ error: 'Erro interno no servidor' })
+  }
+})
+
+// ========================
+// 📋 ENDPOINTS DA FILA E PAINEL
+// ========================
+
+// Listar todos os atendimentos (protegido)
+app.get('/api/atendimentos', auth, async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    
+    // Descriptografar dados sensíveis para visualização
+    const atendimentosDescriptografados = atendimentos.map(a => ({
+      id: a.id,
+      paciente_nome: decrypt(a.paciente_nome),
+      paciente_telefone: decrypt(a.paciente_telefone),
+      paciente_cpf: decrypt(a.paciente_cpf),
+      paciente_email: decrypt(a.paciente_email),
+      condicao: (() => {
+        try {
+          const decrypted = decrypt(a.condicao)
+          return decrypted ? JSON.parse(decrypted) : { doenca: 'N/A' }
+        } catch(e) {
+          return { doenca: 'Erro ao descriptografar' }
+        }
+      })(),
+      elegivel: a.elegivel,
+      status: a.status,
+      pagamento: a.pagamento,
+      criado_em: a.criado_em,
+      atualizado_em: a.atualizado_em,
+      pago_em: a.pago_em
+    }))
+    
+    // Ordenar por data de criação (mais recentes primeiro)
+    atendimentosDescriptografados.sort((a, b) => 
+      new Date(b.criado_em) - new Date(a.criado_em)
+    )
+    
+    res.json(atendimentosDescriptografados)
+  } catch(e) {
+    console.error('❌ Erro ao listar atendimentos:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar atendimentos' })
+  }
+})
+
+// Buscar atendimento específico (protegido)
+app.get('/api/atendimento/:id', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    res.json({
+      id: at.id,
+      paciente_nome: decrypt(at.paciente_nome),
+      paciente_telefone: decrypt(at.paciente_telefone),
+      paciente_cpf: decrypt(at.paciente_cpf),
+      paciente_email: decrypt(at.paciente_email),
+      condicao: (() => {
+        try {
+          const decrypted = decrypt(at.condicao)
+          return decrypted ? JSON.parse(decrypted) : { doenca: 'N/A' }
+        } catch(e) {
+          return { doenca: 'Erro ao descriptografar' }
+        }
+      })(),
+      elegivel: at.elegivel,
+      status: at.status,
+      pagamento: at.pagamento,
+      criado_em: at.criado_em,
+      atualizado_em: at.atualizado_em,
+      pago_em: at.pago_em
+    })
+  } catch(e) {
+    console.error('❌ Erro ao buscar atendimento:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar atendimento' })
+  }
+})
+
+// Listar apenas atendimentos na fila (protegido)
+app.get('/api/fila', auth, async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    
+    // Filtrar: pagos E com status FILA
+    const fila = atendimentos.filter(a => 
+      a.pagamento === true && a.status === 'FILA'
+    )
+    
+    const filaDescriptografada = fila.map(a => ({
+      id: a.id,
+      paciente_nome: decrypt(a.paciente_nome),
+      paciente_telefone: decrypt(a.paciente_telefone),
+      condicao: (() => {
+        try {
+          const decrypted = decrypt(a.condicao)
+          return decrypted ? JSON.parse(decrypted) : { doenca: 'N/A' }
+        } catch(e) {
+          return { doenca: 'Erro ao descriptografar' }
+        }
+      })(),
+      status: a.status,
+      criado_em: a.criado_em,
+      pago_em: a.pago_em
+    }))
+    
+    // Ordenar por data de pagamento (mais antigos primeiro - FIFO)
+    filaDescriptografada.sort((a, b) => 
+      new Date(a.pago_em) - new Date(b.pago_em)
+    )
+    
+    res.json({
+      total: filaDescriptografada.length,
+      atendimentos: filaDescriptografada
+    })
+  } catch(e) {
+    console.error('❌ Erro ao listar fila:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar fila' })
+  }
+})
+
+// ========================
+// 📊 ESTATÍSTICAS PARA O PAINEL
+// ========================
+app.get('/api/estatisticas', auth, async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    
+    const stats = {
+      total: atendimentos.length,
+      elegiveis: atendimentos.filter(a => a.elegivel === true).length,
+      inelegiveis: atendimentos.filter(a => a.elegivel === false).length,
+      pagos: atendimentos.filter(a => a.pagamento === true).length,
+      pendentes_pagamento: atendimentos.filter(a => 
+        a.elegivel === true && a.pagamento === false && a.status === 'AGUARDANDO_PAGAMENTO'
+      ).length,
+      naFila: atendimentos.filter(a => 
+        a.pagamento === true && a.status === 'FILA'
+      ).length,
+      aprovados: atendimentos.filter(a => a.status === 'APROVADO').length,
+      recusados: atendimentos.filter(a => a.status === 'RECUSADO').length,
+      ultimos_30_dias: atendimentos.filter(a => {
+        const dataCriacao = new Date(a.criado_em)
+        const trintaDiasAtras = new Date()
+        trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30)
+        return dataCriacao >= trintaDiasAtras
+      }).length
+    }
+    
+    res.json(stats)
+  } catch(e) {
+    console.error('❌ Erro ao buscar estatísticas:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar estatísticas' })
+  }
+})
+
+// ========================
+// 👨‍⚕️ DECISÃO MÉDICA (APROVAR/RECUSAR)
+// ========================
+app.post('/api/decisao/:id', auth, async (req, res) => {
+  try {
+    const { decisao, observacao } = req.body
+    const { id } = req.params
+    
+    const at = await db.buscarAtendimentoPorId(id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    let novoStatus = ''
+    let mensagem = ''
+    
+    if (decisao === 'APROVAR') {
+      novoStatus = 'APROVADO'
+      mensagem = '✅ Receita aprovada! Você receberá seu documento por WhatsApp em breve.'
+    } else if (decisao === 'RECUSAR') {
+      novoStatus = 'RECUSADO'
+      mensagem = '❌ Infelizmente sua solicitação não foi aprovada. Motivo: ' + (observacao || 'não atende aos critérios clínicos')
+    } else {
+      return res.status(400).json({ error: 'Decisão inválida. Use APROVAR ou RECUSAR' })
+    }
+    
+    // Atualizar status do atendimento
+    await db.atualizarStatus(id, novoStatus)
+    
+    // Enviar notificação WhatsApp
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+    
+    if (telefone) {
+      const msg = `Olá ${nome}!\n\n${mensagem}\n\n🔗 Acesse o portal: ${BASE_URL}/painel-medico`
+      await enviarWhatsAppOficial(telefone, msg)
+    }
+    
+    res.json({ 
+      success: true, 
+      novoStatus,
+      mensagem: `Atendimento ${novoStatus} com sucesso`
+    })
+  } catch(e) {
+    console.error('❌ Erro ao processar decisão:', e.message)
+    res.status(500).json({ error: 'Erro ao processar decisão médica' })
+  }
+})
+
+// ========================
+// 🔄 WEBHOOK PARA ATUALIZAR STATUS (USADO PELO STRIPE)
+// ========================
+app.post('/api/webhook/atualizar-status', async (req, res) => {
+  try {
+    const { atendimentoId, status } = req.body
+    
+    if (!atendimentoId || !status) {
+      return res.status(400).json({ error: 'atendimentoId e status são obrigatórios' })
+    }
+    
+    await db.atualizarStatus(atendimentoId, status)
+    
+    res.json({ success: true, message: 'Status atualizado' })
+  } catch(e) {
+    console.error('❌ Erro no webhook de status:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 
 
 
