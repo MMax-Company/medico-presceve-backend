@@ -927,8 +927,8 @@ async function abrirMemed(data) {
                     html += '<button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">📋 Ver</button>' +
                             '<button class="btn btn-primary" onclick="abrirProntuario(\'' + a.id + '\')">🧠 Prontuário</button>' Ver</button>'
                 if (a.status === 'FILA') {
-                    html += '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">✅ Aprovar</button>' +
-                            '<button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">❌ Recusar</button>'
+                    html += '<button onclick="aprovarEPrescrever(ID_ATENDIMENTO)">✅ Aprovar e Prescrever</button>'
+                            '<button onclick="recusarAtendimento(ID_ATENDIMENTO)">❌ Recusar</button>'
                 }
                 html += '</td></tr>'
             }
@@ -957,46 +957,50 @@ async function abrirMemed(data) {
             }
         }
 
-        async function aprovar(id) {
-            if (!confirm('Aprovar este paciente?')) return
-            try {
-                const res = await fetch(API_URL + '/api/decisao/' + id, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ decisao: 'APROVAR' })
-                })
-                const data = await res.json()
-                if (data.success) {
-                    alert('✅ Paciente aprovado!')
-                    carregarDados()
-                }
-            } catch(e) {
-                alert('Erro ao aprovar')
-            }
-        }
+      async function aprovarEPrescrever(id) {
+        try {
+        // 1. Aprova no backend
+        const res = await fetch(API_URL + '/api/decisao/' + id, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+       body: JSON.stringify({ decisao: 'APROVAR' })
+     })
 
-        async function recusar(id) {
-            if (!confirm('Recusar este paciente?')) return
-            try {
-                const res = await fetch(API_URL + '/api/decisao/' + id, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ decisao: 'RECUSAR' })
-                })
-                const data = await res.json()
-                if (data.success) {
-                    alert('❌ Paciente recusado')
-                    carregarDados()
-                }
-            } catch(e) {
-                alert('Erro ao recusar')
-            }
+    const result = await res.json()
+    if (!result.success) {
+      return alert('Erro ao aprovar')
+    }
+
+    // 2. Busca prontuário
+    const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+
+    const data = await prontuarioRes.json()
+
+    // 3. Abre Memed já preenchido
+    await abrirMemed(data)
+
+  } catch (e) {
+    alert('Erro no processo')
+  }
+}  
+
+       async function recusarAtendimento(id) {
+         await fetch(API_URL + '/api/decisao/' + id, {
+        method: 'POST',
+        headers: {
+       'Content-Type': 'application/json',
+       'Authorization': 'Bearer ' + token
+     },
+    body: JSON.stringify({ decisao: 'RECUSAR' })
+  })
+
+  alert('Paciente recusado')
+}
         }
 
         setInterval(() => {
