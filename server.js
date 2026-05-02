@@ -513,7 +513,7 @@ app.get('/api/estatisticas', auth, async (req, res) => {
   }
 })
 
-app.post('/api/decisao/:id', auth, async (req, res) => {
+     app.post('/api/decisao/:id', auth, async (req, res) => {
   try {
     const { decisao } = req.body
     const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
@@ -527,40 +527,57 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
     if (decisao === 'APROVAR') {
       const msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Você pode buscar a receita digital no seu perfil.\n\n💊 A receita é válida por 30 dias.`
       await enviarWhatsApp(telefone, msg)
+
     } else {
       const msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Procure um atendimento presencial para renovar sua receita.`
       await enviarWhatsApp(telefone, msg)
-      const telefone = receita.paciente?.telefone
-
-          if (telefone && receita.pdfUrl) {
-      await enviarReceitaWhatsApp(telefone, receita.pdfUrl)   
     }
 
     res.json({ success: true, novoStatus })
-  } catch(e) {
+
+  } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
+    
+    await db.atualizarStatus(req.params.id, novoStatus)
 
-app.get('/api/atendimento/:id', auth, async (req, res) => {
+    const at = await db.buscar
+})
+
+app.get('/api/atendimento/:id', auth, async (req
+
+app.post('/api/receita', auth, async (req, res) => {
   try {
-    const at = await db.buscarAtendimentoPorId(req.params.id)
-    if (!at) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    const receita = req.body
+
+    const id = receita.atendimentoId || crypto.randomUUID()
+    const file = `data/receita_${id}.json`
+
+    fs.writeFileSync(file, JSON.stringify(receita, null, 2))
+
+    const at = await db.buscarAtendimentoPorId(id)
+
+    const telefone = at ? decrypt(at.paciente_telefone) : null
+    const nome = at ? decrypt(at.paciente_nome) : ''
+
+    if (telefone && receita.pdfUrl) {
+      await enviarWhatsAppOficial(
+        telefone,
+        `📄 Olá ${nome}, sua receita está pronta:\n${receita.pdfUrl}`
+      )
     }
-    res.json({
-      ...at,
-      paciente_nome: decrypt(at.paciente_nome),
-      paciente_telefone: decrypt(at.paciente_telefone),
-      paciente_cpf: decrypt(at.paciente_cpf),
-      paciente_email: decrypt(at.paciente_email),
-      doencas: decrypt(at.doencas)
-    })
-  } catch(e) {
+
+    console.log('📄 Receita salva e enviada:', id)
+
+    res.json({ success: true })
+
+  } catch (e) {
+    console.error('Erro receita:', e)
     res.status(500).json({ error: e.message })
   }
 })
-
+                                             
 // ========================
 // 🏥 PAINEL MÉDICO
 // ========================
@@ -576,10 +593,20 @@ app.get('/painel-medico', (req, res) => {
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; }
 
        MdHub.event.add("prescription:completed", async function (data) {
-         console.log("📄 Receita finalizada:", data)
+       console.log("📄 Receita finalizada:", data)
 
-        await salvarReceitaBackend(data)
+  await fetch(API_URL + '/api/receita', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify({
+      ...data,
+      atendimentoId: window.atendimentoAtual
     })
+  })
+})
         
         .login-container {
             display: flex;
@@ -969,60 +996,40 @@ async function abrirMemed(data) {
             }
         }
 
-      async function aprovarEPrescrever(id) {
-        try {
-        // 1. Aprova no backend
-        const res = await fetch(API_URL + '/api/decisao/' + id, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
-        },
-       body: JSON.stringify({ decisao: 'APROVAR' })
-     })
+async function aprovarEPrescrever(id) {
+  try {
+    // 1. Aprova
+    const res = await fetch(API_URL + '/api/decisao/' + id, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({ decisao: 'APROVAR' })
+    })
 
     const result = await res.json()
     if (!result.success) {
       return alert('Erro ao aprovar')
     }
 
-     app.post('/api/receita', auth, async (req, res) => {
-  try {
-    const receita = req.body
+    // 2. Guarda id atual
+    window.atendimentoAtual = id
 
-    const id = receita.prescriptionId || crypto.randomUUID()
-    const file = `data/receita_${id}.json`
-
-    fs.writeFileSync(file, JSON.stringify(receita, null, 2))
-
-    const telefone = receita.paciente?.telefone
-
-    if (telefone && receita.pdfUrl) {
-      await enviarReceitaWhatsApp(telefone, receita.pdfUrl)
-    }
-
-    res.json({ success: true })
-
-  } catch (e) {
-    console.error('Erro ao salvar receita:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-    // 2. Busca prontuário
+    // 3. Busca prontuário
     const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
       headers: { 'Authorization': 'Bearer ' + token }
     })
 
     const data = await prontuarioRes.json()
 
-    // 3. Abre Memed já preenchido
+    // 4. Abre Memed
     await abrirMemed(data)
 
   } catch (e) {
     alert('Erro no processo')
   }
-}  
+}    
 
 async function salvarReceitaBackend(data) {
   await fetch(API_URL + '/api/receita', {
