@@ -1008,90 +1008,104 @@ async function abrirProntuario(id) {
         }
 
 async function aprovarEPrescrever(id) {
-  try {
-    const res = await fetch(API_URL + '/api/decisao/' + id, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + token
-      },
-      body: JSON.stringify({ decisao: 'APROVAR' })
-    })
+    try {
+        const res = await fetch(API_URL + '/api/decisao/' + id, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ decisao: 'APROVAR' })
+        });
 
-    const result = await res.json()
-    if (!result.success) {
-      return alert('Erro ao aprovar')
+        const result = await res.json();
+        if (!result.success) {
+            return alert('Erro ao aprovar');
+        }
+
+        window.atendimentoAtual = id;
+
+        const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+
+        const data = await prontuarioRes.json();
+
+        // Chama a função da Memed passando os dados do prontuário
+        await abrirMemed(data);
+
+    } catch (e) {
+        console.error(e);
+        alert('Erro no processo');
     }
-
-    window.atendimentoAtual = id
-
-    const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
-      headers: { 'Authorization': 'Bearer ' + token }
-    })
-
-    const data = await prontuarioRes.json()
-
-    await abrirMemed(data)
-
-  } catch (e) {
-    alert('Erro no processo')
-  }
 }
 
 async function salvarReceitaBackend(data) {
-  await fetch(API_URL + '/api/receita', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token
-    },
-    body: JSON.stringify({
-      ...data,
-      atendimentoId: window.atendimentoAtual
-    })
-  })
+    await fetch(API_URL + '/api/receita', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({
+            ...data,
+            atendimentoId: window.atendimentoAtual
+        })
+    });
 }
 
 async function abrirMemed(data) {
-  await MdHub.command.send("plataforma.prescricao", "newPrescription")
+    // Abrir a plataforma de prescrição
+    await MdHub.command.send("plataforma.prescricao", "newPrescription");
 
-  await MdHub.command.send("plataforma.prescricao", "setAdditionalData", {
-    header: [
-      { Nome: data.paciente.nome },
-      { CPF: data.paciente.cpf },
-      { Doença: data.condicao.doenca }
-    ]
-  })
+    // Enviar dados adicionais do paciente
+    await MdHub.command.send("plataforma.prescricao", "setAdditionalData", {
+        header: [
+            { Nome: data.paciente.nome },
+            { CPF: data.paciente.cpf },
+            { Doença: data.condicao.doenca }
+        ]
+    });
 
-  const medicamentos = data.map(med => ({
-  nome: med.nome,
-  posologia: `<p>${med.posologia}</p>` // Verifique se as crases estão certas
-}));
+    // Se houver medicamentos pré-setados no seu objeto data:
+    if (data.medicamentos && Array.isArray(data.medicamentos)) {
+        const medicamentos = data.medicamentos.map(med => ({
+            nome: med.nome,
+            posologia: `<p>${med.posologia}</p>`
+        }));
+        // Aqui você enviaria os medicamentos para a Memed se necessário
+    }
+} // <--- CHAVE DE FECHAMENTO QUE ESTAVA FALTANDO
 
 // Evento da Memed → salva no backend
 MdHub.event.add("prescription:completed", async function (data) {
-  console.log("📄 Receita finalizada:", data)
-  await salvarReceitaBackend(data)
-})
+    console.log("📄 Receita finalizada:", data);
+    await salvarReceitaBackend(data);
+});
 
 async function recusarAtendimento(id) {
-  await fetch(API_URL + '/api/decisao/' + id, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token
-    },
-    body: JSON.stringify({ decisao: 'RECUSAR' })
-  })
-
-  alert('Paciente recusado')
+    try {
+        await fetch(API_URL + '/api/decisao/' + id, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ decisao: 'RECUSAR' })
+        });
+        alert('Paciente recusado');
+    } catch (e) {
+        alert('Erro ao recusar atendimento');
+    }
 }
 
+// Atualização automática do painel
 setInterval(() => {
-  if (document.getElementById('painel').style.display !== 'none') {
-    carregarDados()
-  }
-}, 30000)
+    const painel = document.getElementById('painel');
+    if (painel && painel.style.display !== 'none') {
+        carregarDados();
+    }
+}, 30000);
 
 // ========================
 // 🏥 PUBLIC PAGES
