@@ -66,6 +66,23 @@ const db = {
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : null
   }
 }
+app.post('/api/webhook/triagem', async (req, res) => {
+  const { paciente, triagem } = req.body
+
+  const id = crypto.randomUUID()
+
+  const atendimento = {
+    id,
+    paciente_nome: encrypt(paciente.nome),
+    condicao: encrypt(triagem.doencas),
+    status: 'AGUARDANDO_PAGAMENTO',
+    criado_em: new Date()
+  }
+
+  db.salvar(atendimento)
+
+  res.json({ success: true, id })
+})
 
 // ========================
 // 🚀 SERVER
