@@ -179,6 +179,27 @@ const db = {
   }
 }
 
+      app.get('/api/historico/:cpf', auth, async (req, res) => {
+  try {
+    const cpf = req.params.cpf
+
+    const atendimentos = await db.getAtendimentos()
+
+    const historico = atendimentos
+      .filter(a => decrypt(a.paciente_cpf) === cpf)
+      .map(a => ({
+        id: a.id,
+        data: a.criado_em,
+        status: a.status,
+        condicao: a.condicao ? JSON.parse(decrypt(a.condicao)) : null
+      }))
+
+    res.json(historico)
+
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
 
 // ========================
 // 📱 WHATSAPP (CLOUD API OFICIAL)
@@ -889,14 +910,28 @@ async function abrirProntuario(id) {
 
     const data = await res.json()
 
-    abrirMemed(data)
+  async function abrirMemed(data) {
 
-  } catch (e) {
-    alert('Erro ao carregar prontuário')
+  await MdHub.command.send("plataforma.prescricao", "newPrescription")
+
+  await MdHub.command.send("plataforma.prescricao", "setAdditionalData", {
+    header: [
+      { Nome: data.paciente.nome },
+      { CPF: data.paciente.cpf },
+      { Doença: data.condicao.doenca }
+    ],
+    footer: "Doctor Prescreve"
+  })
+
+  for (const med of data.medicacao) {
+    await MdHub.command.send("plataforma.prescricao", "addItem", {
+      nome: med.nome,
+      posologia: `<p>${med.posologia}</p>`,
+      quantidade: 30
+    })
   }
-}
 
-async function abrirMemed(data) {
+}
 
   // 1. Abre prescrição
   await MdHub.command.send("plataforma.prescricao", "newPrescription")
