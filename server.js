@@ -1217,31 +1217,41 @@ app.get('/teste-whatsapp', async (req, res) => {
 })
 
 // ========================
-// 🚀 INICIA SERVIDOR
+// 🚀 STATUS DO SERVIÇO
 // ========================
-app.listen(PORT, '0.0.0.0', () => {
-const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => {  
-console.log('\n' + '='.repeat(60))
-  console.log('🚀 Doctor Prescreve Backend v4.1.0')
-  console.log('='.repeat(60))
-  console.log(`📡 Porta: ${PORT}`)
-  console.log(`🌍 URL: ${BASE_URL}`)
-  console.log(`✅ ENCRYPTION_KEY: Válida (256-bit AES)`)
-  console.log(`🔐 JWT Auth: Ativo`)
-  console.log(`🔒 Criptografia: AES-256-CBC ativa`)
-  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Conectado' : '⚠️ Não configurado'}`)
-  console.log(`📱 WhatsApp: ${process.env.WHATSAPP_TOKEN ? 'Ativo' : '⚠️ Não configurado'}`)
-  console.log(`🏥 Painel Médico: ${BASE_URL}/painel-medico`)
-  console.log('='.repeat(60))
-  console.log(`✅ Servidor iniciado com sucesso!\n`)
 app.get('/', (req, res) => {
-  res.json({ status: 'online', versao: '4.1.0' });
+  res.status(200).json({
+    status: 'online',
+    versao: '4.1.0',
+    servico: 'Doctor Prescreve Backend',
+    endpoints: [
+      'POST /api/webhook/triagem',
+      'GET /api/payment/:id',
+      'POST /webhook/stripe',
+      'POST /login',
+      'GET /painel-medico',
+      'GET /healthz'
+    ],
+    documentacao: 'https://github.com/MMax-Company/doctor-repositorio-central'
+  });
 });
+
+// ========================
+// 🩺 HEALTHCHECK (RAILWAY)
+// ========================
 app.get('/healthz', (req, res) => {
-  res.json({ status: 'ok', service: 'Doctor Prescreve' });
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString()
+  });
 });
-  
-module.exports = app
 
+// ========================
+// 🚀 START SERVER
+// ========================
+const PORT = process.env.PORT || 3002;
 
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Doctor Prescreve Backend rodando na porta ${PORT}`);
+  console.log(`🌐 Healthcheck: http://localhost:${PORT}/healthz`);
+});
