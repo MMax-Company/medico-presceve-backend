@@ -166,17 +166,6 @@ const db = {
       console.log(`✅ Status atualizado: ${id} -> ${novoStatus}`)
     }
   },
-
-      async function salvarReceitaBackend(data) {
-  await fetch(API_URL + '/api/receita', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token
-    },
-    body: JSON.stringify(data)
-  })
-} 
  
   async atualizarStatusPagamento(id, pago, status) {
     const at = await this.buscarAtendimentoPorId(id)
@@ -1031,7 +1020,18 @@ async function abrirMemed(data) {
   }
 }  
 
-       async function recusarAtendimento(id) {
+async function salvarReceitaBackend(data) {
+  await fetch(API_URL + '/api/receita', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify(data)
+  })
+}
+      
+    async function recusarAtendimento(id) {
          await fetch(API_URL + '/api/decisao/' + id, {
         method: 'POST',
         headers: {
