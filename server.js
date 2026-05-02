@@ -810,55 +810,6 @@ app.get('/api/estatisticas', auth, async (req, res) => {
 })
 
 // ========================
-// 👨‍⚕️ DECISÃO MÉDICA (APROVAR/RECUSAR)
-// ========================
-app.post('/api/decisao/:id', auth, async (req, res) => {
-  try {
-    const { decisao, observacao } = req.body
-    const { id } = req.params
-    
-    const at = await db.buscarAtendimentoPorId(id)
-    if (!at) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
-    }
-    
-    let novoStatus = ''
-    let mensagem = ''
-    
-    if (decisao === 'APROVAR') {
-      novoStatus = 'APROVADO'
-      mensagem = '✅ Receita aprovada! Você receberá seu documento por WhatsApp em breve.'
-    } else if (decisao === 'RECUSAR') {
-      novoStatus = 'RECUSADO'
-      mensagem = '❌ Infelizmente sua solicitação não foi aprovada. Motivo: ' + (observacao || 'não atende aos critérios clínicos')
-    } else {
-      return res.status(400).json({ error: 'Decisão inválida. Use APROVAR ou RECUSAR' })
-    }
-    
-    // Atualizar status do atendimento
-    await db.atualizarStatus(id, novoStatus)
-    
-    // Enviar notificação WhatsApp
-    const telefone = decrypt(at.paciente_telefone)
-    const nome = decrypt(at.paciente_nome)
-    
-    if (telefone) {
-      const msg = `Olá ${nome}!\n\n${mensagem}\n\n🔗 Acesse o portal: ${BASE_URL}/painel-medico`
-      await enviarWhatsAppOficial(telefone, msg)
-    }
-    
-    res.json({ 
-      success: true, 
-      novoStatus,
-      mensagem: `Atendimento ${novoStatus} com sucesso`
-    })
-  } catch(e) {
-    console.error('❌ Erro ao processar decisão:', e.message)
-    res.status(500).json({ error: 'Erro ao processar decisão médica' })
-  }
-})
-
-// ========================
 // 🔄 WEBHOOK PARA ATUALIZAR STATUS (USADO PELO STRIPE)
 // ========================
 app.post('/api/webhook/atualizar-status', async (req, res) => {
@@ -878,7 +829,330 @@ app.post('/api/webhook/atualizar-status', async (req, res) => {
   }
 })
 
+// ========================
+// 👨‍⚕️ DECISÃO MÉDICA (COMPLETO E MELHORADO)
+// ========================
 
+// Endpoint principal de decisão médica
+app.post('/api/decisao/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { decisao, observacao, medicamento, posologia } = req.body
+    
+    // 1. VALIDAÇÕES INICIAIS
+    if (!decisao || (decisao !== 'APROVAR' && decisao !== 'RECUSAR')) {
+      return res.status(400).json({ 
+        error: 'Decisão inválida. Use "APROVAR" ou "RECUSAR"' 
+      })
+    }
+    
+    // 2. BUSCAR ATENDIMENTO
+    const at = await db.buscarAtendimentoPorId(id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    // 3. VERIFICAR SE JÁ FOI DECIDIDO
+    if (at.status === 'APROVADO' || at.status === 'RECUSADO') {
+      return res.status(400).json({ 
+        error: `Este atendimento já foi ${at.status === 'APROVADO' ? 'aprovado' : 'recusado'}` 
+      })
+    }
+    
+    // 4. VERIFICAR SE PAGAMENTO FOI CONFIRMADO
+    if (!at.pagamento) {
+      return res.status(400).json({ 
+        error: 'Pagamento não confirmado. Aguarde o pagamento do paciente.' 
+      })
+    }
+    
+    // 5. PROCESSAR DECISÃO
+    const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    const dataDecisao = new Date().toISOString()
+    
+    // 6. ATUALIZAR ATENDIMENTO COM DETALHES DA DECISÃO
+    const condicaoAtual = JSON.parse(decrypt(at.condicao || '{}'))
+    
+    const atendimentoAtualizado = {
+      ...at,
+      status: novoStatus,
+      decisao: {
+        status: novoStatus,
+        data: dataDecisao,
+        medico: req.usuario?.role || 'medico',
+        observacao: observacao || (decisao === 'APROVAR' ? 'Aprovado conforme critérios clínicos' : 'Não atende aos critérios estabelecidos'),
+        medicamento_prescrito: decisao === 'APROVAR' ? (medicamento || gerarMedicacao(condicaoAtual.tipo)) : null,
+        posologia: posologia || (decisao === 'APROVAR' ? 'Uso contínuo conforme orientação médica' : null)
+      },
+      atualizado_em: dataDecisao
+    }
+    
+    await db.salvarAtendimento(atendimentoAtualizado)
+    
+    // 7. GERAR PRONTUÁRIO SE APROVADO
+    let prontuario = null
+    if (decisao === 'APROVAR') {
+      prontuario = gerarProntuario(at)
+    }
+    
+    // 8. ENVIAR NOTIFICAÇÃO WHATSAPP
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+    
+    if (telefone) {
+      let mensagemWhatsApp = ''
+      
+      if (decisao === 'APROVAR') {
+        mensagemWhatsApp = `✅ *ÓTIMAS NOTÍCIAS, ${nome.toUpperCase()}!* ✅\n\n` +
+                          `Sua solicitação foi *APROVADA* pelo nosso corpo clínico.\n\n` +
+                          `📋 *Medicamento prescrito:* ${atendimentoAtualizado.decisao.medicamento_prescrito}\n` +
+                          `💊 *Posologia:* ${atendimentoAtualizado.decisao.posologia}\n\n` +
+                          `📄 Você receberá sua receita digital em breve.\n\n` +
+                          `🔗 Acompanhe: ${BASE_URL}/painel-medico\n\n` +
+                          `👨‍⚕️ Doctor Prescreve - Cuidando de você!`
+      } else {
+        mensagemWhatsApp = `❌ *ATENÇÃO, ${nome.toUpperCase()}!* ❌\n\n` +
+                          `Sua solicitação foi *RECUSADA* pelo nosso corpo clínico.\n\n` +
+                          `📝 *Motivo:* ${observacao || 'Não atende aos critérios clínicos estabelecidos'}\n\n` +
+                          `🔗 Para mais informações, acesse: ${BASE_URL}/painel-medico\n\n` +
+                          `👨‍⚕️ Doctor Prescreve - Sempre à disposição!`
+      }
+      
+      await enviarWhatsAppOficial(telefone, mensagemWhatsApp)
+    }
+    
+    // 9. SE APROVADO, GERAR LINK PARA RECEITA
+    let receitaUrl = null
+    if (decisao === 'APROVAR') {
+      receitaUrl = `${BASE_URL}/api/receita/${id}`
+    }
+    
+    // 10. REGISTRAR LOG DA DECISÃO
+    console.log(`📝 Decisão médica: ${novoStatus} - Atendimento: ${id} - Paciente: ${nome}`)
+    
+    // 11. RESPOSTA COMPLETA
+    res.json({
+      success: true,
+      atendimentoId: id,
+      status: novoStatus,
+      decisao: atendimentoAtualizado.decisao,
+      prontuario: prontuario,
+      receitaUrl: receitaUrl,
+      notificacao_enviada: !!telefone,
+      mensagem: `Atendimento ${novoStatus.toLowerCase()} com sucesso`
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao processar decisão:', e.message)
+    res.status(500).json({ 
+      error: 'Erro interno ao processar decisão médica',
+      detalhe: e.message 
+    })
+  }
+})
+
+// ========================
+// 📄 ENDPOINT PARA GERAR RECEITA (APÓS APROVAÇÃO)
+// ========================
+app.get('/api/receita/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params
+    
+    const at = await db.buscarAtendimentoPorId(id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    if (at.status !== 'APROVADO') {
+      return res.status(400).json({ error: 'Receita disponível apenas para atendimentos aprovados' })
+    }
+    
+    const nome = decrypt(at.paciente_nome)
+    const condicao = JSON.parse(decrypt(at.condicao || '{}'))
+    const medicamento = at.decisao?.medicamento_prescrito || gerarMedicacao(condicao.tipo)
+    const posologia = at.decisao?.posologia || 'Uso contínuo conforme orientação médica'
+    
+    // Gerar PDF (simplificado - você pode integrar com gerador de PDF real)
+    const receita = {
+      numero: `REC-${id.substring(0, 8)}`,
+      data: new Date().toISOString(),
+      paciente: nome,
+      medicamento: medicamento,
+      posologia: posologia,
+      validade: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 dias
+      medico: 'Dr. Plantonista - CRM 12345',
+      assinatura_digital: crypto.createHash('sha256').update(id + process.env.JWT_SECRET).digest('hex')
+    }
+    
+    res.json(receita)
+    
+  } catch(e) {
+    console.error('❌ Erro ao gerar receita:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar receita' })
+  }
+})
+
+// ========================
+// 📋 ENDPOINT PARA HISTÓRICO DE DECISÕES
+// ========================
+app.get('/api/decisoes', auth, async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    
+    const decisoes = atendimentos
+      .filter(a => a.status === 'APROVADO' || a.status === 'RECUSADO')
+      .map(a => ({
+        id: a.id,
+        paciente_nome: decrypt(a.paciente_nome),
+        status: a.status,
+        decisao: a.decisao,
+        criado_em: a.criado_em,
+        atualizado_em: a.atualizado_em
+      }))
+      .sort((a, b) => new Date(b.atualizado_em) - new Date(a.atualizado_em))
+    
+    res.json({
+      total: decisoes.length,
+      aprovados: decisoes.filter(d => d.status === 'APROVADO').length,
+      recusados: decisoes.filter(d => d.status === 'RECUSADO').length,
+      decisoes: decisoes
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao buscar decisões:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar histórico' })
+  }
+})
+
+// ========================
+// 🔄 ENDPOINT PARA REVISÃO DE DECISÃO (CASO NECESSÁRIO)
+// ========================
+app.put('/api/decisao/:id/revisar', auth, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { novaDecisao, motivoRevisao, observacao } = req.body
+    
+    if (!novaDecisao || (novaDecisao !== 'APROVAR' && novaDecisao !== 'RECUSAR')) {
+      return res.status(400).json({ error: 'Nova decisão inválida' })
+    }
+    
+    const at = await db.buscarAtendimentoPorId(id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const statusAnterior = at.status
+    const novoStatus = novaDecisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO'
+    
+    // Registrar revisão
+    const revisao = {
+      data: new Date().toISOString(),
+      status_anterior: statusAnterior,
+      status_novo: novoStatus,
+      motivo: motivoRevisao || 'Revisão médica',
+      observacao: observacao,
+      medico: req.usuario?.role || 'medico_revisor'
+    }
+    
+    const revisoesAnteriores = at.revisoes || []
+    
+    const atendimentoAtualizado = {
+      ...at,
+      status: novoStatus,
+      decisao: {
+        ...at.decisao,
+        revisado: true,
+        revisao: revisao,
+        status: novoStatus,
+        data_revisao: new Date().toISOString()
+      },
+      revisoes: [...revisoesAnteriores, revisao],
+      atualizado_em: new Date().toISOString()
+    }
+    
+    await db.salvarAtendimento(atendimentoAtualizado)
+    
+    // Notificar paciente sobre a revisão
+    const telefone = decrypt(at.paciente_telefone)
+    if (telefone) {
+      const mensagem = `🔄 *REVISÃO MÉDICA* 🔄\n\n` +
+                      `Sua solicitação foi revisada.\n` +
+                      `Status anterior: ${statusAnterior}\n` +
+                      `Novo status: ${novoStatus}\n\n` +
+                      `📝 Motivo: ${motivoRevisao || 'Reanálise do caso'}\n\n` +
+                      `🔗 Acesse para mais detalhes: ${BASE_URL}/painel-medico`
+      
+      await enviarWhatsAppOficial(telefone, mensagem)
+    }
+    
+    res.json({
+      success: true,
+      atendimentoId: id,
+      status_anterior: statusAnterior,
+      status_novo: novoStatus,
+      revisao: revisao,
+      mensagem: `Decisão revisada com sucesso`
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao revisar decisão:', e.message)
+    res.status(500).json({ error: 'Erro ao revisar decisão' })
+  }
+})
+
+// ========================
+// 📊 ENDPOINT PARA ESTATÍSTICAS DAS DECISÕES
+// ========================
+app.get('/api/estatisticas/decisoes', auth, async (req, res) => {
+  try {
+    const atendimentos = await db.getAtendimentos()
+    
+    const aprovados = atendimentos.filter(a => a.status === 'APROVADO')
+    const recusados = atendimentos.filter(a => a.status === 'RECUSADO')
+    
+    // Calcular tempo médio de resposta
+    const temposResposta = atendimentos
+      .filter(a => a.decisao && a.decisao.data)
+      .map(a => {
+        const criado = new Date(a.criado_em)
+        const decidido = new Date(a.decisao.data)
+        return (decidido - criado) / (1000 * 60 * 60) // horas
+      })
+    
+    const tempoMedioResposta = temposResposta.length > 0 
+      ? temposResposta.reduce((a, b) => a + b, 0) / temposResposta.length 
+      : 0
+    
+    // Motivos mais comuns de recusa
+    const motivosRecusa = recusados
+      .map(a => a.decisao?.observacao || 'Não informado')
+      .reduce((acc, motivo) => {
+        acc[motivo] = (acc[motivo] || 0) + 1
+        return acc
+      }, {})
+    
+    res.json({
+      total_decisoes: aprovados.length + recusados.length,
+      aprovados: {
+        total: aprovados.length,
+        percentual: atendimentos.length > 0 ? (aprovados.length / atendimentos.length * 100).toFixed(2) : 0
+      },
+      recusados: {
+        total: recusados.length,
+        percentual: atendimentos.length > 0 ? (recusados.length / atendimentos.length * 100).toFixed(2) : 0,
+        principais_motivos: motivosRecusa
+      },
+      tempo_medio_resposta: {
+        horas: tempoMedioResposta.toFixed(2),
+        minutos: (tempoMedioResposta * 60).toFixed(0)
+      }
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro nas estatísticas de decisões:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar estatísticas' })
+  }
+})
 
 
 // ========================
