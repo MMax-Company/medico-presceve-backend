@@ -1580,6 +1580,512 @@ app.get('/api/prontuario/:id/export', auth, async (req, res) => {
 })
 
 // ========================
+// 📄 RECEITA MÉDICA (COMPLETO)
+// ========================
+
+const PDFDocument = require('pdfkit')
+const QRCode = require('qrcode')
+
+// ========================
+// 1. SALVAR RECEITA (BÁSICO)
+// ========================
+app.post('/api/receita', auth, async (req, res) => {
+  try {
+    const receita = req.body
+    const id = receita.atendimentoId || receita.id || crypto.randomUUID()
+    
+    // Validar dados obrigatórios
+    if (!receita.medicamento && !receita.medicamentos) {
+      return res.status(400).json({ 
+        error: 'Receita deve conter pelo menos um medicamento' 
+      })
+    }
+    
+    // Estruturar receita
+    const receitaCompleta = {
+      id: id,
+      numero: `REC-${id.substring(0, 8)}-${Date.now()}`,
+      atendimentoId: id,
+      paciente: receita.paciente || null,
+      medicamentos: receita.medicamentos || [{
+        nome: receita.medicamento,
+        posologia: receita.posologia || 'Uso conforme orientação médica',
+        quantidade: receita.quantidade || 30,
+        duracao: receita.duracao || '30 dias'
+      }],
+      observacoes: receita.observacoes || '',
+      medico: receita.medico || {
+        nome: 'Dr. Plantonista',
+        registro: 'CRM 12345',
+        especialidade: 'Clínica Geral'
+      },
+      data_emissao: new Date().toISOString(),
+      data_validade: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      assinatura_digital: crypto
+        .createHash('sha256')
+        .update(id + process.env.JWT_SECRET + Date.now())
+        .digest('hex'),
+      status: 'ATIVA',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+    
+    // Salvar no arquivo
+    const filePath = path.join(DB_DIR, `receita_${id}.json`)
+    fs.writeFileSync(filePath, JSON.stringify(receitaCompleta, null, 2))
+    
+    // Atualizar atendimento com link da receita
+    const at = await db.buscarAtendimentoPorId(id)
+    if (at) {
+      at.receita = {
+        id: receitaCompleta.id,
+        numero: receitaCompleta.numero,
+        emitida_em: receitaCompleta.data_emissao,
+        validade: receitaCompleta.data_validade,
+        url: `${BASE_URL}/api/receita/${id}/pdf`
+      }
+      await db.salvarAtendimento(at)
+    }
+    
+    console.log(`✅ Receita salva: ${receitaCompleta.numero}`)
+    
+    res.json({
+      success: true,
+      receita: receitaCompleta,
+      mensagem: 'Receita gerada com sucesso',
+      links: {
+        pdf: `${BASE_URL}/api/receita/${id}/pdf`,
+        json: `${BASE_URL}/api/receita/${id}`,
+        whatsapp: `${BASE_URL}/api/receita/${id}/enviar-whatsapp`
+      }
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao salvar receita:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar receita' })
+  }
+})
+
+// ========================
+// 2. BUSCAR RECEITA
+// ========================
+app.get('/api/receita/:id', auth, async (req, res) => {
+  try {
+    const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Receita não encontrada' })
+    }
+    
+    const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    res.json(receita)
+    
+  } catch(e) {
+    console.error('❌ Erro ao buscar receita:', e.message)
+    res.status(500).json({ error: 'Erro ao carregar receita' })
+  }
+})
+
+// ========================
+// 3. GERAR PDF DA RECEITA
+// ========================
+app.get('/api/receita/:id/pdf', auth, async (req, res) => {
+  try {
+    const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Receita não encontrada' })
+    }
+    
+    const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    
+    // Configurar PDF
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `inline; filename=receita_${receita.numero}.pdf`)
+    
+    const doc = new PDFDocument({ margin: 50, size: 'A4' })
+    doc.pipe(res)
+    
+    // Cabeçalho
+    doc.fontSize(20)
+      .fillColor('#1a6b8a')
+      .text('DOCTOR PRESCREVE', { align: 'center' })
+      .fontSize(12)
+      .fillColor('#666')
+      .text('Telemedicina com Responsabilidade', { align: 'center' })
+      .moveDown()
+    
+    // Linha divisória
+    doc.strokeColor('#1a6b8a')
+      .lineWidth(1)
+      .moveTo(50, doc.y)
+      .lineTo(550, doc.y)
+      .stroke()
+      .moveDown()
+    
+    // Título
+    doc.fontSize(16)
+      .fillColor('#000')
+      .text('RECEITA MÉDICA', { align: 'center' })
+      .moveDown()
+    
+    // Informações da receita
+    doc.fontSize(10)
+      .text(`Número: ${receita.numero}`, { continued: true })
+      .text(`                    Emissão: ${new Date(receita.data_emissao).toLocaleDateString('pt-BR')}`)
+      .text(`Validade: ${new Date(receita.data_validade).toLocaleDateString('pt-BR')}`)
+      .moveDown()
+    
+    // Dados do paciente
+    doc.fontSize(12)
+      .fillColor('#1a6b8a')
+      .text('IDENTIFICAÇÃO DO PACIENTE', { underline: true })
+      .moveDown(0.5)
+    
+    doc.fontSize(10)
+      .fillColor('#000')
+      .text(`Nome: ${receita.paciente?.nome || (at ? decrypt(at.paciente_nome) : 'N/A')}`)
+      .text(`CPF: ${receita.paciente?.cpf || (at ? decrypt(at.paciente_cpf) : 'N/A')}`)
+      .moveDown()
+    
+    // Medicamentos
+    doc.fontSize(12)
+      .fillColor('#1a6b8a')
+      .text('MEDICAMENTOS PRESCRITOS', { underline: true })
+      .moveDown(0.5)
+    
+    receita.medicamentos.forEach((med, index) => {
+      doc.fontSize(10)
+        .fillColor('#000')
+        .text(`${index + 1}. ${med.nome.toUpperCase()}`)
+        .text(`   Posologia: ${med.posologia}`)
+        .text(`   Quantidade: ${med.quantidade} unidades`)
+        .text(`   Duração: ${med.duracao}`)
+        .moveDown(0.5)
+    })
+    
+    // Observações
+    if (receita.observacoes) {
+      doc.moveDown()
+        .fontSize(12)
+        .fillColor('#1a6b8a')
+        .text('OBSERVAÇÕES', { underline: true })
+        .moveDown(0.5)
+        .fontSize(10)
+        .fillColor('#000')
+        .text(receita.observacoes)
+        .moveDown()
+    }
+    
+    // Informações do médico
+    doc.moveDown()
+      .fontSize(12)
+      .fillColor('#1a6b8a')
+      .text('IDENTIFICAÇÃO DO MÉDICO', { underline: true })
+      .moveDown(0.5)
+    
+    doc.fontSize(10)
+      .fillColor('#000')
+      .text(`Nome: ${receita.medico.nome}`)
+      .text(`Registro: ${receita.medico.registro}`)
+      .text(`Especialidade: ${receita.medico.especialidade}`)
+      .moveDown()
+    
+    // Assinatura digital e QR Code
+    doc.moveDown()
+      .fontSize(8)
+      .fillColor('#999')
+      .text(`Assinatura Digital: ${receita.assinatura_digital.substring(0, 20)}...`, { align: 'center' })
+    
+    // Gerar QR Code
+    const qrData = JSON.stringify({
+      numero: receita.numero,
+      paciente: receita.paciente?.nome || (at ? decrypt(at.paciente_nome) : 'N/A'),
+      valido: true,
+      url: `${BASE_URL}/api/receita/${req.params.id}/validar`
+    })
+    
+    const qrCodeBuffer = await QRCode.toBuffer(qrData, { type: 'png', width: 100 })
+    doc.image(qrCodeBuffer, 450, doc.y - 80, { width: 80 })
+    
+    // Rodapé
+    doc.moveDown(3)
+      .fontSize(8)
+      .fillColor('#999')
+      .text('Documento gerado eletronicamente - Válido em todo território nacional', { align: 'center' })
+      .text('Lei 13.989/2020 - Telemedicina', { align: 'center' })
+    
+    doc.end()
+    
+  } catch(e) {
+    console.error('❌ Erro ao gerar PDF:', e.message)
+    res.status(500).json({ error: 'Erro ao gerar PDF da receita' })
+  }
+})
+
+// ========================
+// 4. ENVIAR RECEITA POR WHATSAPP
+// ========================
+app.post('/api/receita/:id/enviar-whatsapp', auth, async (req, res) => {
+  try {
+    const at = await db.buscarAtendimentoPorId(req.params.id)
+    if (!at) {
+      return res.status(404).json({ error: 'Atendimento não encontrado' })
+    }
+    
+    const telefone = decrypt(at.paciente_telefone)
+    const nome = decrypt(at.paciente_nome)
+    
+    if (!telefone) {
+      return res.status(400).json({ error: 'Paciente sem telefone cadastrado' })
+    }
+    
+    const pdfUrl = `${BASE_URL}/api/receita/${req.params.id}/pdf`
+    const mensagem = `📄 *RECEITA MÉDICA* 📄\n\n` +
+                    `Olá ${nome},\n\n` +
+                    `Sua receita foi gerada com sucesso!\n\n` +
+                    `🔗 *Link da Receita:* ${pdfUrl}\n\n` +
+                    `📱 Apresente este documento em qualquer farmácia.\n\n` +
+                    `✅ *Validade:* 90 dias\n\n` +
+                    `👨‍⚕️ Doctor Prescreve - Cuidando de você!`
+    
+    await enviarWhatsAppOficial(telefone, mensagem)
+    
+    // Registrar envio
+    const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
+    if (fs.existsSync(filePath)) {
+      const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+      receita.whatsapp_enviado = true
+      receita.whatsapp_enviado_em = new Date().toISOString()
+      fs.writeFileSync(filePath, JSON.stringify(receita, null, 2))
+    }
+    
+    res.json({
+      success: true,
+      mensagem: 'Receita enviada por WhatsApp',
+      telefone: telefone,
+      enviado_em: new Date().toISOString()
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao enviar receita:', e.message)
+    res.status(500).json({ error: 'Erro ao enviar receita por WhatsApp' })
+  }
+})
+
+// ========================
+// 5. VALIDAR RECEITA (QR CODE)
+// ========================
+app.get('/api/receita/:id/validar', async (req, res) => {
+  try {
+    const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ 
+        valido: false, 
+        mensagem: 'Receita não encontrada' 
+      })
+    }
+    
+    const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    const dataValidade = new Date(receita.data_validade)
+    const agora = new Date()
+    
+    const valida = dataValidade > agora && receita.status === 'ATIVA'
+    
+    res.json({
+      valido: valida,
+      numero: receita.numero,
+      paciente: receita.paciente?.nome || 'N/A',
+      emissao: receita.data_emissao,
+      validade: receita.data_validade,
+      status: valida ? 'VÁLIDA' : 'EXPIRADA',
+      mensagem: valida ? 'Receita válida' : 'Receita expirada ou inválida'
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao validar receita:', e.message)
+    res.json({ valido: false, mensagem: 'Erro na validação' })
+  }
+})
+
+// ========================
+// 6. LISTAR RECEITAS DO PACIENTE
+// ========================
+app.get('/api/receitas/paciente/:atendimentoId', auth, async (req, res) => {
+  try {
+    const files = fs.readdirSync(DB_DIR)
+    const receitasPaciente = []
+    
+    for (const file of files) {
+      if (file.startsWith('receita_')) {
+        const receita = JSON.parse(fs.readFileSync(path.join(DB_DIR, file), 'utf8'))
+        if (receita.atendimentoId === req.params.atendimentoId) {
+          receitasPaciente.push(receita)
+        }
+      }
+    }
+    
+    res.json({
+      total: receitasPaciente.length,
+      receitas: receitasPaciente.sort((a, b) => 
+        new Date(b.data_emissao) - new Date(a.data_emissao)
+      )
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao listar receitas:', e.message)
+    res.status(500).json({ error: 'Erro ao listar receitas' })
+  }
+})
+
+// ========================
+// 7. CANCELAR RECEITA
+// ========================
+app.post('/api/receita/:id/cancelar', auth, async (req, res) => {
+  try {
+    const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Receita não encontrada' })
+    }
+    
+    const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    receita.status = 'CANCELADA'
+    receita.cancelada_em = new Date().toISOString()
+    receita.motivo_cancelamento = req.body.motivo || 'Cancelada pelo médico'
+    fs.writeFileSync(filePath, JSON.stringify(receita, null, 2))
+    
+    // Notificar paciente
+    const at = await db.buscarAtendimentoPorId(receita.atendimentoId)
+    if (at) {
+      const telefone = decrypt(at.paciente_telefone)
+      if (telefone) {
+        await enviarWhatsAppOficial(telefone, 
+          `⚠️ Sua receita foi cancelada.\nMotivo: ${receita.motivo_cancelamento}`
+        )
+      }
+    }
+    
+    res.json({
+      success: true,
+      mensagem: 'Receita cancelada com sucesso',
+      cancelada_em: receita.cancelada_em
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao cancelar receita:', e.message)
+    res.status(500).json({ error: 'Erro ao cancelar receita' })
+  }
+})
+
+// ========================
+// 8. RENOVAR RECEITA
+// ========================
+app.post('/api/receita/:id/renovar', auth, async (req, res) => {
+  try {
+    const filePathAntigo = path.join(DB_DIR, `receita_${req.params.id}.json`)
+    
+    if (!fs.existsSync(filePathAntigo)) {
+      return res.status(404).json({ error: 'Receita original não encontrada' })
+    }
+    
+    const receitaAntiga = JSON.parse(fs.readFileSync(filePathAntigo, 'utf8'))
+    
+    // Criar nova receita baseada na anterior
+    const novaReceita = {
+      ...receitaAntiga,
+      id: crypto.randomUUID(),
+      numero: `REC-${crypto.randomUUID().substring(0, 8)}-${Date.now()}`,
+      data_emissao: new Date().toISOString(),
+      data_validade: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      renovacao_de: receitaAntiga.numero,
+      assinatura_digital: crypto
+        .createHash('sha256')
+        .update(req.params.id + process.env.JWT_SECRET + Date.now())
+        .digest('hex'),
+      status: 'ATIVA'
+    }
+    
+    const novoFilePath = path.join(DB_DIR, `receita_${novaReceita.id}.json`)
+    fs.writeFileSync(novoFilePath, JSON.stringify(novaReceita, null, 2))
+    
+    // Atualizar atendimento
+    const at = await db.buscarAtendimentoPorId(receitaAntiga.atendimentoId)
+    if (at) {
+      const telefone = decrypt(at.paciente_telefone)
+      if (telefone) {
+        await enviarWhatsAppOficial(telefone, 
+          `✅ Sua receita foi renovada!\nNova receita: ${BASE_URL}/api/receita/${novaReceita.id}/pdf`
+        )
+      }
+    }
+    
+    res.json({
+      success: true,
+      mensagem: 'Receita renovada com sucesso',
+      nova_receita: {
+        id: novaReceita.id,
+        numero: novaReceita.numero,
+        pdf_url: `${BASE_URL}/api/receita/${novaReceita.id}/pdf`
+      }
+    })
+    
+  } catch(e) {
+    console.error('❌ Erro ao renovar receita:', e.message)
+    res.status(500).json({ error: 'Erro ao renovar receita' })
+  }
+})
+
+// ========================
+// 9. WEBHOOK PARA RECEITA (Memed)
+// ========================
+app.post('/api/webhook/receita', auth, async (req, res) => {
+  try {
+    const { atendimentoId, pdfUrl, medicamentos, assinado } = req.body
+    
+    if (!atendimentoId || !pdfUrl) {
+      return res.status(400).json({ error: 'Dados incompletos' })
+    }
+    
+    // Salvar receita gerada pelo Memed
+    const receita = {
+      id: atendimentoId,
+      atendimentoId: atendimentoId,
+      pdfUrl: pdfUrl,
+      medicamentos: medicamentos,
+      assinado: assinado,
+      data_emissao: new Date().toISOString(),
+      origem: 'MEMED',
+      status: 'ATIVA'
+    }
+    
+    const filePath = path.join(DB_DIR, `receita_${atendimentoId}.json`)
+    fs.writeFileSync(filePath, JSON.stringify(receita, null, 2))
+    
+    // Enviar para o paciente
+    const at = await db.buscarAtendimentoPorId(atendimentoId)
+    if (at && at.paciente_telefone) {
+      const telefone = decrypt(at.paciente_telefone)
+      const nome = decrypt(at.paciente_nome)
+      
+      await enviarWhatsAppOficial(telefone, 
+        `📄 Olá ${nome}, sua receita está pronta!\n\nLink: ${pdfUrl}\n\nVálida por 90 dias.`
+      )
+    }
+    
+    res.json({ success: true, mensagem: 'Receita processada via Memed' })
+    
+  } catch(e) {
+    console.error('❌ Erro no webhook da receita:', e.message)
+    res.status(500).json({ error: 'Erro ao processar webhook' })
+  }
+})
+
+
+
+// ========================
 // 🚀 SERVER
 // ========================
 
