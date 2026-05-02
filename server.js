@@ -167,6 +167,17 @@ const db = {
     }
   },
 
+      async function salvarReceitaBackend(data) {
+  await fetch(API_URL + '/api/receita', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify(data)
+  })
+} 
+ 
   async atualizarStatusPagamento(id, pago, status) {
     const at = await this.buscarAtendimentoPorId(id)
     if (at) {
@@ -220,7 +231,9 @@ async function enviarWhatsAppOficial(numero, mensagem) {
     console.error('❌ Erro WhatsApp:', e.response?.data || e.message)
   }
 }
-
+async function enviarReceitaWhatsApp(numero, urlPdf) {
+  await enviarWhatsAppOficial(numero, `📄 Sua receita:\n${urlPdf}`)
+}
 
 // ========================
 // 🛡️ MIDDLEWARES
@@ -528,6 +541,10 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
     } else {
       const msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Procure um atendimento presencial para renovar sua receita.`
       await enviarWhatsApp(telefone, msg)
+      const telefone = receita.paciente?.telefone
+
+          if (telefone && receita.pdfUrl) {
+      await enviarReceitaWhatsApp(telefone, receita.pdfUrl}   
     }
 
     res.json({ success: true, novoStatus })
@@ -568,6 +585,12 @@ app.get('/painel-medico', (req, res) => {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; }
+
+       MdHub.event.add("prescription:completed", async function (data) {
+         console.log("📄 Receita finalizada:", data)
+
+        await salvarReceitaBackend(data)
+    })
         
         .login-container {
             display: flex;
@@ -974,6 +997,25 @@ async function abrirMemed(data) {
       return alert('Erro ao aprovar')
     }
 
+      app.post('/api/receita', auth, async (req, res) => {
+      try {
+    const receita = req.body
+
+    const id = receita.prescriptionId || crypto.randomUUID()
+
+    const file = `data/receita_${id}.json`
+
+    fs.writeFileSync(file, JSON.stringify(receita, null, 2))
+
+    console.log('📄 Receita salva:', id)
+
+    res.json({ success: true })
+
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+  
     // 2. Busca prontuário
     const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
       headers: { 'Authorization': 'Bearer ' + token }
