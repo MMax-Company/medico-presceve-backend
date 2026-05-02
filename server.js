@@ -525,11 +525,10 @@ app.get('/api/estatisticas', auth, async (req, res) => {
     const nome = decrypt(at.paciente_nome)
 
     if (decisao === 'APROVAR') {
-      const msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Você pode buscar a receita digital no seu perfil.\n\n💊 A receita é válida por 30 dias.`
+      const msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}`
       await enviarWhatsApp(telefone, msg)
-
     } else {
-      const msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Procure um atendimento presencial para renovar sua receita.`
+      const msg = `❌ Receita recusada.\n\n📋 Número: ${req.params.id.substring(0, 8)}`
       await enviarWhatsApp(telefone, msg)
     }
 
