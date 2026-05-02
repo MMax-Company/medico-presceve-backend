@@ -1009,7 +1009,6 @@ async function abrirProntuario(id) {
 
 async function aprovarEPrescrever(id) {
   try {
-    // 1. Aprova
     const res = await fetch(API_URL + '/api/decisao/' + id, {
       method: 'POST',
       headers: {
@@ -1024,23 +1023,20 @@ async function aprovarEPrescrever(id) {
       return alert('Erro ao aprovar')
     }
 
-    // 2. Guarda id atual
     window.atendimentoAtual = id
 
-    // 3. Busca prontuário
     const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
       headers: { 'Authorization': 'Bearer ' + token }
     })
 
     const data = await prontuarioRes.json()
 
-    // 4. Abre Memed
     await abrirMemed(data)
 
   } catch (e) {
     alert('Erro no processo')
   }
-}    
+}
 
 async function salvarReceitaBackend(data) {
   await fetch(API_URL + '/api/receita', {
@@ -1049,13 +1045,38 @@ async function salvarReceitaBackend(data) {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + token
     },
-    body: JSON.stringify(data)
+    body: JSON.stringify({
+      ...data,
+      atendimentoId: window.atendimentoAtual
+    })
   })
 }
 
 async function abrirMemed(data) {
-
   await MdHub.command.send("plataforma.prescricao", "newPrescription")
+
+  await MdHub.command.send("plataforma.prescricao", "setAdditionalData", {
+    header: [
+      { Nome: data.paciente.nome },
+      { CPF: data.paciente.cpf },
+      { Doença: data.condicao.doenca }
+    ]
+  })
+
+  for (const med of data.medicacao) {
+    await MdHub.command.send("plataforma.prescricao", "addItem", {
+      nome: med.nome,
+      posologia: `<p>${med.posologia}</p>`,
+      quantidade: 30
+    })
+  }
+}
+
+// Evento da Memed → salva no backend
+MdHub.event.add("prescription:completed", async function (data) {
+  console.log("📄 Receita finalizada:", data)
+  await salvarReceitaBackend(data)
+})
 
 async function recusarAtendimento(id) {
   await fetch(API_URL + '/api/decisao/' + id, {
@@ -1079,38 +1100,27 @@ setInterval(() => {
 // ========================
 // 🏥 PUBLIC PAGES
 // ========================
+
 app.get('/healthz', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '4.1', service: 'Doctor Prescreve' })
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    version: '4.1',
+    service: 'Doctor Prescreve'
+  })
 })
 
 app.get('/success', (req, res) => {
-  res.send(`<html><head><style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
-    .box { background: white; padding: 40px; border-radius: 16px; max-width: 500px; margin: 0 auto; }
-    h1 { color: #28a745; }
-    a { background: #1a6b8a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; }
-  </style></head><body>
-  <div class="box">
+  res.send(`<html><body>
     <h1>✅ Pagamento Confirmado!</h1>
-    <p>Seu atendimento foi registrado com sucesso.</p>
-    <p>Você receberá uma resposta em até 24 horas úteis.</p>
-    <a href="/painel-medico">📊 Voltar</a>
-  </div>
+    <a href="/painel-medico">Voltar</a>
   </body></html>`)
 })
 
 app.get('/cancel', (req, res) => {
-  res.send(`<html><head><style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
-    .box { background: white; padding: 40px; border-radius: 16px; max-width: 500px; margin: 0 auto; }
-    h1 { color: #dc3545; }
-    a { background: #1a6b8a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 20px; }
-  </style></head><body>
-  <div class="box">
+  res.send(`<html><body>
     <h1>❌ Pagamento Cancelado</h1>
-    <p>Você pode tentar novamente quando estiver pronto.</p>
-    <a href="/">🏠 Voltar</a>
-  </div>
+    <a href="/">Voltar</a>
   </body></html>`)
 })
 
@@ -1118,17 +1128,42 @@ app.get('/', (req, res) => {
   res.json({
     status: 'online',
     versao: '4.1.0',
-    servico: 'Doctor Prescreve Backend',
-    endpoints: [
-      'POST /api/webhook/triagem',
-      'GET /api/payment/:id',
-      'POST /webhook/stripe',
-      'POST /login',
-      'GET /painel-medico',
-      'GET /healthz'
-    ],
-    documentacao: 'https://github.com/MMax-Company/doctor-repositorio-central'
+    servico: 'Doctor Prescreve Backend'
   })
+})
+
+// ========================
+// 📄 SALVAR RECEITA
+// ========================
+app.post('/api/receita', auth, async (req, res) => {
+  try {
+    const receita = req.body
+
+    const id = receita.atendimentoId || crypto.randomUUID()
+    const file = `data/receita_${id}.json`
+
+    fs.writeFileSync(file, JSON.stringify(receita, null, 2))
+
+    const at = await db.buscarAtendimentoPorId(id)
+
+    const telefone = at ? decrypt(at.paciente_telefone) : null
+    const nome = at ? decrypt(at.paciente_nome) : ''
+
+    if (telefone && receita.pdfUrl) {
+      await enviarWhatsAppOficial(
+        telefone,
+        `📄 Olá ${nome}, sua receita está pronta:\n${receita.pdfUrl}`
+      )
+    }
+
+    console.log('📄 Receita salva:', id)
+
+    res.json({ success: true })
+
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // 👇 SUA ROTA DE TESTE
