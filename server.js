@@ -856,6 +856,45 @@ app.get('/painel-medico', (req, res) => {
             renderizarAtendimentos()
         }
 
+async function abrirProntuario(id) {
+  try {
+    const res = await fetch(API_URL + '/api/prontuario/' + id, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+
+    const data = await res.json()
+
+    abrirMemed(data)
+
+  } catch (e) {
+    alert('Erro ao carregar prontuário')
+  }
+}
+
+async function abrirMemed(data) {
+
+  // 1. Abre prescrição
+  await MdHub.command.send("plataforma.prescricao", "newPrescription")
+
+  // 2. Preenche dados do paciente
+  await MdHub.command.send("plataforma.prescricao", "setAdditionalData", {
+    header: [
+      { Nome: data.paciente.nome },
+      { CPF: data.paciente.cpf },
+      { Doença: data.condicao.doenca }
+    ],
+    footer: "Atendimento Doctor Prescreve"
+  })
+
+  // 3. Adiciona medicamento automático
+  await MdHub.command.send("plataforma.prescricao", "addItem", {
+    nome: data.medicacao,
+    posologia: "<p>Uso contínuo conforme orientação médica</p>",
+    quantidade: 30
+  })
+
+}
+       
         function renderizarAtendimentos() {
             let filtrados = [...dadosAtendimentos]
             if (filtroAtual === 'fila') {
@@ -885,7 +924,8 @@ app.get('/painel-medico', (req, res) => {
                     '<td>' + (a.doencas || 'N/A') + '</td>' +
                     '<td><span class="status-badge ' + statusClass + '">' + (a.status || 'PENDENTE') + '</span></td>' +
                     '<td>' + (a.pagamento ? '✅ Pago' : '⏳ Pendente') + '</td>' +
-                    '<td><button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">📋 Ver</button>'
+                    html += '<button class="btn btn-info" onclick="verDetalhes(\'' + a.id + '\')">📋 Ver</button>' +
+                            '<button class="btn btn-primary" onclick="abrirProntuario(\'' + a.id + '\')">🧠 Prontuário</button>' Ver</button>'
                 if (a.status === 'FILA') {
                     html += '<button class="btn btn-primary" onclick="aprovar(\'' + a.id + '\')">✅ Aprovar</button>' +
                             '<button class="btn btn-danger" onclick="recusar(\'' + a.id + '\')">❌ Recusar</button>'
