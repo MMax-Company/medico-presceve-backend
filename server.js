@@ -987,7 +987,7 @@ async function abrirMemed(data) {
     }
 
      app.post('/api/receita', auth, async (req, res) => {
-      try {
+  try {
     const receita = req.body
 
     const id = receita.prescriptionId || crypto.randomUUID()
@@ -1004,6 +1004,7 @@ async function abrirMemed(data) {
     res.json({ success: true })
 
   } catch (e) {
+    console.error('Erro ao salvar receita:', e)
     res.status(500).json({ error: e.message })
   }
 })
