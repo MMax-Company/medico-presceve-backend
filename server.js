@@ -986,17 +986,20 @@ async function abrirMemed(data) {
       return alert('Erro ao aprovar')
     }
 
-      app.post('/api/receita', auth, async (req, res) => {
+     app.post('/api/receita', auth, async (req, res) => {
       try {
     const receita = req.body
 
     const id = receita.prescriptionId || crypto.randomUUID()
-
     const file = `data/receita_${id}.json`
 
     fs.writeFileSync(file, JSON.stringify(receita, null, 2))
 
-    console.log('📄 Receita salva:', id)
+    const telefone = receita.paciente?.telefone
+
+    if (telefone && receita.pdfUrl) {
+      await enviarReceitaWhatsApp(telefone, receita.pdfUrl)
+    }
 
     res.json({ success: true })
 
@@ -1004,7 +1007,7 @@ async function abrirMemed(data) {
     res.status(500).json({ error: e.message })
   }
 })
-  
+
     // 2. Busca prontuário
     const prontuarioRes = await fetch(API_URL + '/api/prontuario/' + id, {
       headers: { 'Authorization': 'Bearer ' + token }
