@@ -529,12 +529,6 @@ app.get('/cancel', (req, res) => {
 </html>`);
 });
 
-const PORT = process.env.PORT || 3002;
-
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
-
 // ========================
 // 🏥 PAINEL MÉDICO
 // ========================
@@ -835,16 +829,6 @@ async function abrirMemed(data) {
             { Doença: data.condicao.doenca }
         ]
     });
-
-    // Se houver medicamentos pré-setados no seu objeto data:
-    if (data.medicamentos && Array.isArray(data.medicamentos)) {
-        const medicamentos = data.medicamentos.map(med => ({
-            nome: med.nome,
-            posologia: `<p>${med.posologia}</p>`
-        }));
-        // Aqui você enviaria os medicamentos para a Memed se necessário
-    }
-} // <--- CHAVE DE FECHAMENTO QUE ESTAVA FALTANDO
 
 // Evento da Memed → salva no backend
 MdHub.event.add("prescription:completed", async function (data) {
@@ -1258,6 +1242,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🏥 Painel Médico: ${BASE_URL}/painel-medico`)
   console.log('='.repeat(60))
   console.log(`✅ Servidor iniciado com sucesso!\n`)
-})
-
+  const PORT = process.env.PORT || 3002;
+  app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+});
+  
 module.exports = app
