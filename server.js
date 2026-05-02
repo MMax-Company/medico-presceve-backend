@@ -75,7 +75,6 @@ function gerarProntuario(at) {
 }
 
 const app = express()
-const PORT = process.env.PORT || 3002
 
 const BASE_URL = process.env.BASE_URL 
   || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}`)
@@ -530,10 +529,12 @@ app.get('/cancel', (req, res) => {
 </html>`);
 });
 
-// Garanta que o servidor está ouvindo a porta correta
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
+
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
+});
+
 });
 // ========================
 // 🏥 PAINEL MÉDICO
