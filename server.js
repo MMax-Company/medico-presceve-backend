@@ -545,8 +545,6 @@ app.get('/api/estatisticas', auth, async (req, res) => {
     const at = await db.buscar
 })
 
-app.get('/api/atendimento/:id', auth, async (req
-
 app.post('/api/receita', auth, async (req, res) => {
   try {
     const receita = req.body
@@ -557,7 +555,6 @@ app.post('/api/receita', auth, async (req, res) => {
     fs.writeFileSync(file, JSON.stringify(receita, null, 2))
 
     const at = await db.buscarAtendimentoPorId(id)
-
     const telefone = at ? decrypt(at.paciente_telefone) : null
     const nome = at ? decrypt(at.paciente_nome) : ''
 
@@ -568,16 +565,13 @@ app.post('/api/receita', auth, async (req, res) => {
       )
     }
 
-    console.log('📄 Receita salva e enviada:', id)
-
     res.json({ success: true })
 
   } catch (e) {
-    console.error('Erro receita:', e)
     res.status(500).json({ error: e.message })
   }
 })
-                                             
+
 // ========================
 // 🏥 PAINEL MÉDICO
 // ========================
@@ -592,9 +586,7 @@ app.get('/painel-medico', (req, res) => {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; }
 
-       MdHub.event.add("prescription:completed", async function (data) {
-       console.log("📄 Receita finalizada:", data)
-
+  MdHub.event.add("prescription:completed", async function (data) {
   await fetch(API_URL + '/api/receita', {
     method: 'POST',
     headers: {
