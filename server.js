@@ -1493,24 +1493,24 @@ app.get('/painel-medico', (req, res) => {
   }
 
   function atualizarEstatisticas(stats) {
-    const statsHtml = `
+    const statsHtml = \`
       <div class="stat-card-premium">
-        <div class="stat-info"><h3>${stats.total || 0}</h3><p>Total Geral</p></div>
+        <div class="stat-info"><h3>\${stats.total || 0}</h3><p>Total Geral</p></div>
         <div class="stat-icon"><i class="fas fa-folder-open"></i></div>
       </div>
       <div class="stat-card-premium">
-        <div class="stat-info"><h3>${stats.naFila || 0}</h3><p>Aguardando</p></div>
+        <div class="stat-info"><h3>\${stats.naFila || 0}</h3><p>Aguardando</p></div>
         <div class="stat-icon"><i class="fas fa-hourglass-half"></i></div>
       </div>
       <div class="stat-card-premium">
-        <div class="stat-info"><h3>${stats.aprovados || 0}</h3><p>Aprovados</p></div>
+        <div class="stat-info"><h3>\${stats.aprovados || 0}</h3><p>Aprovados</p></div>
         <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
       </div>
       <div class="stat-card-premium">
-        <div class="stat-info"><h3>${stats.recusados || 0}</h3><p>Recusados</p></div>
+        <div class="stat-info"><h3>\${stats.recusados || 0}</h3><p>Recusados</p></div>
         <div class="stat-icon"><i class="fas fa-times-circle"></i></div>
       </div>
-    `;
+    \`;
     document.getElementById('stats').innerHTML = statsHtml;
   }
 
@@ -1524,21 +1524,21 @@ app.get('/painel-medico', (req, res) => {
         html = '<div class="empty-state" style="grid-column: 1/-1;"><i class="fas fa-check-circle"></i><p>Nenhum chamado pendente</p></div>';
       } else {
         suportes.forEach(s => {
-          html += `
+          html += \`
             <div class="suporte-card">
               <div class="suporte-header">
-                <span class="suporte-nome">👤 ${s.nome || 'Paciente'}</span>
-                <span class="suporte-telefone">${s.telefone}</span>
+                <span class="suporte-nome">👤 \${s.nome || 'Paciente'}</span>
+                <span class="suporte-telefone">\${s.telefone}</span>
               </div>
-              <div class="suporte-mensagem">${s.mensagem || 'Aguardando atendimento'}</div>
-              <div class="suporte-tempo"><i class="far fa-clock"></i> Há ${formatarTempo(s.criado_em)}</div>
+              <div class="suporte-mensagem">\${s.mensagem || 'Aguardando atendimento'}</div>
+              <div class="suporte-tempo"><i class="far fa-clock"></i> Há \${formatarTempo(s.criado_em)}</div>
               <div style="margin-top: 15px;">
-                <button class="btn-premium btn-warning" onclick="atenderSuporte('${s.id}', '${s.telefone}', '${s.nome || 'Paciente'}')">
+                <button class="btn-premium btn-warning" onclick="atenderSuporte('\${s.id}', '\${s.telefone}', '\${s.nome || 'Paciente'}')">
                   <i class="fas fa-reply"></i> Atender Chamado
                 </button>
               </div>
             </div>
-          `;
+          \`;
         });
       }
       document.getElementById('suportesPendentes').innerHTML = html;
@@ -1566,7 +1566,7 @@ app.get('/painel-medico', (req, res) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           telefone: telefone,
-          mensagem: '👨‍⚕️ *Doctor Prescreve*\\n\\nOlá! Um atendente já está analisando seu caso e falará com você em breve.'
+          mensagem: '👨‍⚕️ *Doctor Prescreve*\\\\n\\\\nOlá! Um atendente já está analisando seu caso e falará com você em breve.'
         })
       });
       alert('✅ Paciente notificado!');
@@ -1602,35 +1602,35 @@ app.get('/painel-medico', (req, res) => {
       let statusClass = 'status-' + tipo;
       let statusText = tipo === 'fila' ? '⏳ Na Fila' : tipo === 'atendimento' ? '👨‍⚕️ Atendendo' : '📝 Decisão';
       
-      html += `
+      html += \`
         <div class="patient-card-premium">
           <div class="card-header">
             <div>
-              <div class="patient-name">${a.paciente_nome || 'Nome não informado'}</div>
-              <div class="patient-id">ID: ${a.id.substring(0, 12)}...</div>
+              <div class="patient-name">\${a.paciente_nome || 'Nome não informado'}</div>
+              <div class="patient-id">ID: \${a.id.substring(0, 12)}...</div>
             </div>
-            <span class="status-badge ${statusClass}">${statusText}</span>
+            <span class="status-badge \${statusClass}">\${statusText}</span>
           </div>
           <div class="patient-info">
-            <div class="info-item"><i class="fas fa-phone"></i> ${a.paciente_telefone || 'Não informado'}</div>
-            <div class="info-item"><i class="fas fa-notes-medical"></i> ${a.doencas || 'Não informada'}</div>
-            <div class="info-item"><i class="fas fa-calendar-alt"></i> ${new Date(a.criado_em).toLocaleDateString()}</div>
+            <div class="info-item"><i class="fas fa-phone"></i> \${a.paciente_telefone || 'Não informado'}</div>
+            <div class="info-item"><i class="fas fa-notes-medical"></i> \${a.doencas || 'Não informada'}</div>
+            <div class="info-item"><i class="fas fa-calendar-alt"></i> \${new Date(a.criado_em).toLocaleDateString()}</div>
           </div>
           <div class="card-actions">
-      `;
+      \`;
 
       if (tipo === 'fila') {
-        html += `<button class="btn-premium btn-warning" onclick="pegarProximo()"><i class="fas fa-hand-holding-medical"></i> Pegar Próximo</button>`;
+        html += \`<button class="btn-premium btn-warning" onclick="pegarProximo()"><i class="fas fa-hand-holding-medical"></i> Pegar Próximo</button>\`;
       } else if (tipo === 'atendimento') {
-        html += `<button class="btn-premium btn-primary" onclick="abrirProntuario('${a.id}')"><i class="fas fa-file-alt"></i> Prontuário</button>`;
+        html += \`<button class="btn-premium btn-primary" onclick="abrirProntuario('\${a.id}')"><i class="fas fa-file-alt"></i> Prontuário</button>\`;
       } else {
-        html += `
-          <button class="btn-premium btn-success" onclick="verDecisao('${a.id}')"><i class="fas fa-check"></i> Aprovar</button>
-          <button class="btn-premium btn-danger" onclick="recusarConsulta('${a.id}')"><i class="fas fa-times"></i> Recusar</button>
-        `;
+        html += \`
+          <button class="btn-premium btn-success" onclick="verDecisao('\${a.id}')"><i class="fas fa-check"></i> Aprovar</button>
+          <button class="btn-premium btn-danger" onclick="recusarConsulta('\${a.id}')"><i class="fas fa-times"></i> Recusar</button>
+        \`;
       }
 
-      html += `</div></div>`;
+      html += \`</div></div>\`;
     });
     container.innerHTML = html;
   }
@@ -1667,24 +1667,24 @@ app.get('/painel-medico', (req, res) => {
       const modalContent = document.getElementById('modalContent');
       const modalActions = document.getElementById('modalActions');
       
-      modalContent.innerHTML = `
+      modalContent.innerHTML = \`
         <div class="form-grid">
           <div class="form-group">
             <label><i class="fas fa-user"></i> Paciente</label>
-            <input type="text" value="${a.paciente_nome || ''}" disabled>
+            <input type="text" value="\${a.paciente_nome || ''}" disabled>
           </div>
           <div class="form-group">
             <label><i class="fas fa-phone"></i> Telefone</label>
-            <input type="text" value="${a.paciente_telefone || ''}" disabled>
+            <input type="text" value="\${a.paciente_telefone || ''}" disabled>
           </div>
         </div>
         <div class="form-group">
           <label><i class="fas fa-notes-medical"></i> Doença/Queixa</label>
-          <textarea disabled>${a.doencas || 'Não informado'}</textarea>
+          <textarea disabled>\${a.doencas || 'Não informado'}</textarea>
         </div>
         <div class="form-group">
           <label><i class="fas fa-capsules"></i> Medicamento Recomendado</label>
-          <input type="text" id="medicamento" value="${a.medicacao_em_uso || ''}" placeholder="Ex: Losartana 50mg">
+          <input type="text" id="medicamento" value="\${a.medicacao_em_uso || ''}" placeholder="Ex: Losartana 50mg">
         </div>
         <div class="form-group">
           <label><i class="fas fa-prescription-bottle"></i> Posologia</label>
@@ -1694,13 +1694,13 @@ app.get('/painel-medico', (req, res) => {
           <label><i class="fas fa-stethoscope"></i> Conduta Médica (Orientação)</label>
           <textarea id="conduta" placeholder="Orientação que o paciente receberá..."></textarea>
         </div>
-      `;
+      \`;
 
-      modalActions.innerHTML = `
-        <button class="btn-premium btn-success" style="padding: 14px;" onclick="aprovarConsulta('${a.id}')">
+      modalActions.innerHTML = \`
+        <button class="btn-premium btn-success" style="padding: 14px;" onclick="aprovarConsulta('\${a.id}')">
           <i class="fas fa-check-circle"></i> CONFIRMAR E ENVIAR RECEITA
         </button>
-      `;
+      \`;
       
       modal.style.display = 'flex';
     } catch(e) { alert('Erro ao carregar prontuário'); }
@@ -1773,202 +1773,6 @@ app.get('/painel-medico', (req, res) => {
   `)
 })
 
-// ========================
-// 👨‍⚕️ DECISÃO MÉDICA (Pontos 1, 4, 5, 6, 7, 9)
-// ========================
-app.post('/api/decisao/:id', auth, async (req, res) => {
-  try {
-    const { id } = req.params
-    const { decisao, observacao, medicamento, posologia } = req.body
-
-    // Validar decisão
-    if (!decisao || (decisao !== 'APROVAR' && decisao !== 'RECUSAR')) {
-      return res.status(400).json({
-        error: 'Decisão inválida. Use "APROVAR" ou "RECUSAR"'
-      })
-    }
-
-    const at = await db.buscarAtendimentoPorId(id)
-    if (!at) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
-    }
-
-    // ===== Ponto 9: BLOQUEIO DE DUPLA DECISÃO =====
-    if (at.status !== ESTADOS_FLUXO.FILA) {
-      return res.status(400).json({
-        error: `Decisão bloqueada. Status atual: "${at.status}". Só é possível decidir atendimentos com status "FILA".`
-      })
-    }
-
-    // ===== Ponto 1: BLOQUEIO CLÍNICO REAL =====
-    const dadosClinicos = at.dados_clinicos || at.triagem || {}
-    if (!dadosClinicos.elegivel_protocolo) {
-      return res.status(400).json({
-        error: 'Paciente fora do protocolo de renovação. Não é possível aprovar.'
-      })
-    }
-
-    // Verificar pagamento
-    if (!at.pagamento) {
-      return res.status(400).json({
-        error: 'Pagamento não confirmado. Aguarde o pagamento do paciente.'
-      })
-    }
-
-    // ===== Ponto 4: TRAVAR MEDICAÇÃO AUTOMÁTICA =====
-    if (decisao === 'APROVAR') {
-      // Prioridade: medicamento informado pelo médico > medicação em uso do paciente
-      const medicamentoFinal = medicamento || dadosClinicos.medicacao_em_uso
-
-      if (!medicamentoFinal || medicamentoFinal.trim().length === 0) {
-        return res.status(400).json({
-          error: 'Medicação obrigatória para aprovação. Informe o campo "medicamento" ou verifique se o paciente tem medicação em uso cadastrada.'
-        })
-      }
-
-      // ===== Ponto 5: RECEITA USANDO DADO REAL =====
-      const posologiaFinal = posologia || dadosClinicos.posologia_atual || 'Uso contínuo conforme orientação médica'
-
-      const novoStatus = ESTADOS_FLUXO.APROVADO
-
-      // Ponto 6: Validar transição
-      if (!transicaoValida(at.status, novoStatus)) {
-        return res.status(400).json({
-          error: `Transição inválida: ${at.status} → ${novoStatus}`
-        })
-      }
-
-      const decisaoData = {
-        status: novoStatus,
-        data: new Date().toISOString(),
-        medico: req.usuario?.role || 'medico',
-        observacao: observacao || 'Aprovado conforme critérios clínicos',
-        medicamento_prescrito: medicamentoFinal,
-        posologia: posologiaFinal
-      }
-
-      await db.atualizarStatus(id, 'APROVAR', decisaoData)
-
-      // ===== Ponto 7: LOG DE DECISÃO MÉDICA =====
-      await db.salvarDecisaoLog({
-        atendimento_id: id,
-        medico: req.usuario?.role || 'medico',
-        decisao: 'APROVAR',
-        medicamento: medicamentoFinal,
-        posologia: posologiaFinal,
-        observacao: decisaoData.observacao,
-        dados_clinicos: dadosClinicos
-      })
-
-      // Notificar paciente
-      const telefone = safeDecrypt(at.paciente_telefone)
-      const nome = safeDecrypt(at.paciente_nome)
-
-      if (telefone) {
-        const mensagemWhatsApp = `✅ *ÓTIMAS NOTÍCIAS, ${nome.toUpperCase()}!* ✅\n\n` +
-          `Sua solicitação foi *APROVADA* pelo nosso corpo clínico.\n\n` +
-          `📋 *Medicamento prescrito:* ${medicamentoFinal}\n` +
-          `💊 *Posologia:* ${posologiaFinal}\n\n` +
-          `📄 Você receberá sua receita digital em breve.\n\n` +
-          `👨‍⚕️ Doctor Prescreve - Cuidando de você!`
-        await enviarWhatsAppOficial(telefone, mensagemWhatsApp)
-      }
-
-      // Gerar prontuário padronizado (Ponto 8)
-      const tipo = dadosClinicos.tipo || detectarTipo(dadosClinicos.doenca || '')
-      const prontuario = {
-        queixa: gerarQueixa(tipo),
-        historia: gerarHistoria(tipo),
-        exame_fisico: gerarExameFisico(tipo),
-        conduta: gerarConduta(tipo),
-        medicacao: medicamentoFinal,
-        posologia: posologiaFinal
-      }
-
-      console.log(`📝 APROVADO - Atendimento: ${id} - Paciente: ${nome} - Med: ${medicamentoFinal}`)
-
-      // Ponto 12: Estrutura pronta para Memed
-      const prescricaoMemed = {
-        paciente_nome: nome,
-        cpf: safeDecrypt(at.paciente_cpf),
-        medicamento: medicamentoFinal,
-        posologia: posologiaFinal
-      }
-
-      res.json({
-        success: true,
-        atendimentoId: id,
-        status: novoStatus,
-        decisao: decisaoData,
-        prontuario: prontuario,
-        prescricao: prescricaoMemed,
-        receitaUrl: `${BASE_URL}/api/receita/${id}`,
-        notificacao_enviada: !!telefone,
-        mensagem: 'Atendimento aprovado com sucesso'
-      })
-
-    } else {
-      // RECUSAR
-      const novoStatus = ESTADOS_FLUXO.RECUSADO
-
-      if (!transicaoValida(at.status, novoStatus)) {
-        return res.status(400).json({
-          error: `Transição inválida: ${at.status} → ${novoStatus}`
-        })
-      }
-
-      const decisaoData = {
-        status: novoStatus,
-        data: new Date().toISOString(),
-        medico: req.usuario?.role || 'medico',
-        observacao: observacao || 'Não atende aos critérios estabelecidos'
-      }
-
-      await db.atualizarStatus(id, 'RECUSAR', decisaoData)
-
-      // Ponto 7: LOG DE DECISÃO MÉDICA
-      await db.salvarDecisaoLog({
-        atendimento_id: id,
-        medico: req.usuario?.role || 'medico',
-        decisao: 'RECUSAR',
-        medicamento: null,
-        posologia: null,
-        observacao: decisaoData.observacao,
-        dados_clinicos: dadosClinicos
-      })
-
-      // Notificar paciente
-      const telefone = safeDecrypt(at.paciente_telefone)
-      const nome = safeDecrypt(at.paciente_nome)
-
-      if (telefone) {
-        const mensagemWhatsApp = `❌ *ATENÇÃO, ${nome.toUpperCase()}!* ❌\n\n` +
-          `Sua solicitação foi *RECUSADA* pelo nosso corpo clínico.\n\n` +
-          `📝 *Motivo:* ${decisaoData.observacao}\n\n` +
-          `👨‍⚕️ Doctor Prescreve - Sempre à disposição!`
-        await enviarWhatsAppOficial(telefone, mensagemWhatsApp)
-      }
-
-      console.log(`📝 RECUSADO - Atendimento: ${id} - Paciente: ${nome}`)
-
-      res.json({
-        success: true,
-        atendimentoId: id,
-        status: novoStatus,
-        decisao: decisaoData,
-        notificacao_enviada: !!telefone,
-        mensagem: 'Atendimento recusado'
-      })
-    }
-
-  } catch (e) {
-    console.error('❌ Erro ao processar decisão:', e.message)
-    res.status(500).json({
-      error: 'Erro interno ao processar decisão médica',
-      detalhe: e.message
-    })
-  }
-})
 
 // ========================
 // 📜 HISTÓRICO DE DECISÕES (Ponto 7)
