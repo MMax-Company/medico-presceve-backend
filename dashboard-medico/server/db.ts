@@ -267,10 +267,11 @@ export async function obterEstatisticas() {
   const recusados = await db.select().from(atendimentos).where(eq(atendimentos.status, 'RECUSADO'));
 
   return {
-    total: todos.length,
+    totalAtendimentos: todos.length,
     fila: fila.length,
     emAtendimento: emAtendimento.length,
     aprovados: aprovados.length,
     recusados: recusados.length,
+    receitasEmitidas: aprovados.length,
   };
 }
