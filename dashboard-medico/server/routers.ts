@@ -16,6 +16,7 @@ import {
   encrypt,
 } from "./db";
 import { TRPCError } from "@trpc/server";
+import { emitirReceita, obterTokenParaFrontend } from "../../memed";
 
 // Procedimento apenas para médicos
 const medicoProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -183,13 +184,58 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
+        const atendimento = await obterAtendimento(input.atendimentoId);
+        if (!atendimento) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Atendimento não encontrado' });
+        }
+
+        const prontuario = await obterProntuario(input.atendimentoId);
+        
+        // Descriptografar dados para a Memed
+        const dadosAtendimento = {
+          ...atendimento,
+          pacienteNome: decrypt(atendimento.pacienteNomeEncrypted),
+          pacienteCpf: decrypt(atendimento.pacienteCpfEncrypted),
+          pacienteTelefone: decrypt(atendimento.pacienteTelefoneEncrypted),
+          pacienteEmail: decrypt(atendimento.pacienteEmailEncrypted),
+          pacienteNascimento: decrypt(atendimento.pacienteNascimentoEncrypted),
+          medicamentos: prontuario?.medicamentos || [],
+          orientacoes: input.orientacoes || prontuario?.orientacoes || '',
+        };
+
+        // Emitir receita na Memed
+        const resultadoMemed = await emitirReceita(dadosAtendimento);
+        
         const sucesso = await atualizarStatusAtendimento(input.atendimentoId, 'APROVADO');
         if (!sucesso) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao aprovar atendimento' });
         }
 
-        return { sucesso: true, mensagem: 'Atendimento aprovado com sucesso' };
+        // Se a Memed retornou um link, salvar no prontuário
+        if (resultadoMemed.sucesso && resultadoMemed.link) {
+          await salvarProntuario(input.atendimentoId, {
+            receitaPdfUrl: resultadoMemed.pdf || resultadoMemed.link,
+          });
+        }
+
+        return { 
+          sucesso: true, 
+          mensagem: 'Atendimento aprovado com sucesso',
+          memed: resultadoMemed 
+        };
       }),
+    // Obter token da Memed para o frontend
+    obterTokenMemed: medicoProcedure.query(async () => {
+      try {
+        const token = await obterTokenParaFrontend();
+        return { token };
+      } catch (error) {
+        throw new TRPCError({ 
+          code: 'INTERNAL_SERVER_ERROR', 
+          message: 'Erro ao obter token da Memed' 
+        });
+      }
+    }),
 
     // Recusar atendimento
     recusar: medicoProcedure

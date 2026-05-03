@@ -4,11 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowLeft, Plus, Trash2, Clock } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, Trash2, Clock, FileText } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useRoute, useLocation } from "wouter";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useMemed } from "@/hooks/useMemed";
 
 interface Medicamento {
   id?: string;
@@ -36,6 +37,9 @@ export default function Atendimento() {
     quantidade: 1,
     instrucoes: "",
   });
+  
+  // Integração Memed
+  const memed = useMemed();
 
   // Queries
   const atendimentoQuery = trpc.atendimentos.obter.useQuery(atendimentoId, {
@@ -131,7 +135,22 @@ export default function Atendimento() {
     });
   };
 
-  const handleAprovar = () => {
+  const handleAprovar = async () => {
+    // Validar dados obrigatórios
+    if (medicamentos.length === 0) {
+      toast.error('Adicione pelo menos um medicamento');
+      return;
+    }
+
+    // Salvar prontuário primeiro
+    await salvarProntuarioMutation.mutateAsync({
+      atendimentoId,
+      medicamentos,
+      orientacoes,
+      diagnostico,
+    });
+
+    // Depois aprovar (que dispara a emissão da receita na Memed)
     aprovarMutation.mutate({
       atendimentoId,
       orientacoes,
@@ -140,6 +159,14 @@ export default function Atendimento() {
 
   const handleRecusar = () => {
     recusarMutation.mutate(atendimentoId);
+  };
+
+  const handleVisualizarReceita = () => {
+    if (memed.tokenMemed && atendimento.id) {
+      memed.abrirModuloPrescricao(atendimento.id);
+    } else {
+      toast.error('Token da Memed não disponível');
+    }
   };
 
   const tempoRestante = atendimento.lockedUntil
@@ -354,11 +381,11 @@ export default function Atendimento() {
             </Card>
 
             {/* Ações */}
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
               <Button
                 onClick={handleSalvarProntuario}
                 variant="outline"
-                className="flex-1"
+                className="flex-1 min-w-[120px]"
                 disabled={salvarProntuarioMutation.isPending}
               >
                 {salvarProntuarioMutation.isPending && (
@@ -368,18 +395,18 @@ export default function Atendimento() {
               </Button>
               <Button
                 onClick={handleAprovar}
-                className="flex-1 bg-green-600 hover:bg-green-700"
-                disabled={aprovarMutation.isPending}
+                className="flex-1 min-w-[120px] bg-green-600 hover:bg-green-700"
+                disabled={aprovarMutation.isPending || salvarProntuarioMutation.isPending}
               >
                 {aprovarMutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Aprovar
+                Aprovar & Emitir Receita
               </Button>
               <Button
                 onClick={handleRecusar}
                 variant="destructive"
-                className="flex-1"
+                className="flex-1 min-w-[120px]"
                 disabled={recusarMutation.isPending}
               >
                 {recusarMutation.isPending && (
@@ -387,6 +414,16 @@ export default function Atendimento() {
                 )}
                 Recusar
               </Button>
+              {prontuario?.receitaPdfUrl && (
+                <Button
+                  onClick={handleVisualizarReceita}
+                  variant="outline"
+                  className="flex-1 min-w-[120px] border-blue-500 text-blue-600 hover:bg-blue-50"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Ver Receita
+                </Button>
+              )}
             </div>
           </div>
         </div>

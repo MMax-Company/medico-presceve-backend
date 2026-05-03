@@ -66,7 +66,39 @@ async function gerarTokenPrescritor(forceRefresh = false) {
   }
 
   try {
-    console.log('🔐 Cadastrando/autenticando prescritor na Memed...');
+    console.log('🔐 Autenticando prescritor na Memed...');
+    
+    // Primeiro, tentar obter token do prescritor existente
+    try {
+      const getResponse = await axios.get(
+        `${MEMED_API_URL}/sinapse-prescricao/usuarios/${PRESCRITOR_DATA.data.attributes.external_id}?api-key=${API_KEY}&secret-key=${SECRET_KEY}`,
+        {
+          headers: {
+            'Accept': 'application/vnd.api+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'DoctorPrescreve/1.0'
+          },
+          timeout: 30000
+        }
+      );
+      
+      if (getResponse.data?.data?.attributes?.token) {
+        const token = getResponse.data.data.attributes.token;
+        tokenCache = {
+          token: token,
+          expiresAt: Date.now() + 55 * 60 * 1000
+        };
+        console.log('✅ Token obtido (prescritor existente)!');
+        return token;
+      }
+    } catch (getError) {
+      if (getError.response?.status !== 404) {
+        throw getError;
+      }
+      // Prescritor não existe, vamos criar
+    }
+    
+    console.log('📝 Prescritor não encontrado, criando novo...');
     
     const response = await axios.post(
       `${MEMED_API_URL}/sinapse-prescricao/usuarios?api-key=${API_KEY}&secret-key=${SECRET_KEY}`,
@@ -77,9 +109,35 @@ async function gerarTokenPrescritor(forceRefresh = false) {
           'Accept': 'application/vnd.api+json',
           'User-Agent': 'DoctorPrescreve/1.0'
         },
-        timeout: 30000
+        timeout: 30000,
+        validateStatus: () => true // Aceitar qualquer status para tratamento customizado
       }
     );
+    
+    // Tratar resposta 422 (já existe)
+    if (response.status === 422) {
+      console.log('⚠️ Prescritor já existe, buscando por external_id...');
+      const getResponse = await axios.get(
+        `${MEMED_API_URL}/sinapse-prescricao/usuarios/${PRESCRITOR_DATA.data.attributes.external_id}?api-key=${API_KEY}&secret-key=${SECRET_KEY}`,
+        {
+          headers: {
+            'Accept': 'application/vnd.api+json',
+            'User-Agent': 'DoctorPrescreve/1.0'
+          },
+          timeout: 30000
+        }
+      );
+      
+      if (getResponse.data?.data?.attributes?.token) {
+        const token = getResponse.data.data.attributes.token;
+        tokenCache = {
+          token: token,
+          expiresAt: Date.now() + 55 * 60 * 1000
+        };
+        console.log('✅ Token obtido (prescritor existente)!');
+        return token;
+      }
+    }
     
     const token = response.data?.data?.attributes?.token;
     
@@ -93,17 +151,15 @@ async function gerarTokenPrescritor(forceRefresh = false) {
       return token;
     }
     
+    if (response.status !== 200 && response.status !== 201) {
+      throw new Error(`API retornou status ${response.status}: ${JSON.stringify(response.data)}`);
+    }
+    
     console.log('⚠️ Token não encontrado na resposta');
     return null;
     
   } catch (error) {
-    // Se o prescritor já existe, tentar buscar
-    if (error.response?.status === 422 || error.response?.status === 400) {
-      console.log('⚠️ Prescritor pode já existir, tentando buscar por CPF...');
-      return await buscarPrescritorPorCPF();
-    }
-    
-    console.error('❌ Erro ao cadastrar prescritor:');
+    console.error('❌ Erro ao autenticar prescritor:');
     if (error.response) {
       console.error(`   Status: ${error.response.status}`);
       console.error(`   Mensagem: ${JSON.stringify(error.response.data)}`);
@@ -117,52 +173,7 @@ async function gerarTokenPrescritor(forceRefresh = false) {
   }
 }
 
-// ========================
-// 🔍 BUSCAR PRESCRITOR POR CPF
-// ========================
-async function buscarPrescritorPorCPF() {
-  const cpf = PRESCRITOR_DATA.data.attributes.cpf;
-  
-  try {
-    console.log(`🔍 Buscando prescritor por CPF: ${cpf}`);
-    
-    const response = await axios.get(
-      `${MEMED_API_URL}/sinapse-prescricao/usuarios/${cpf}?api-key=${API_KEY}&secret-key=${SECRET_KEY}`,
-      {
-        headers: {
-          'Accept': 'application/vnd.api+json',
-          'User-Agent': 'DoctorPrescreve/1.0'
-        },
-        timeout: 30000
-      }
-    );
-    
-    const token = response.data?.data?.attributes?.token;
-    
-    if (token) {
-      tokenCache = {
-        token: token,
-        expiresAt: Date.now() + 55 * 60 * 1000
-      };
-      console.log('✅ Prescritor encontrado! Token obtido com sucesso!');
-      return token;
-    }
-    
-    console.log('⚠️ Prescritor encontrado mas sem token');
-    return null;
-    
-  } catch (error) {
-    console.error('❌ Erro ao buscar prescritor:');
-    if (error.response?.status === 404) {
-      console.error('   Prescritor não encontrado na Memed');
-      console.error('   Você precisa cadastrar primeiro via POST com as credenciais corretas');
-    } else if (error.response) {
-      console.error(`   Status: ${error.response.status}`);
-      console.error(`   Mensagem: ${JSON.stringify(error.response.data)}`);
-    }
-    return null;
-  }
-}
+
 
 // ========================
 // 💊 EMITIR RECEITA VIA MEMED
@@ -183,25 +194,43 @@ async function emitirReceita(atendimento) {
       throw new Error('Nome do paciente não informado');
     }
     
+    // Extrair medicamentos do atendimento (suporta múltiplos formatos)
+    let medicamentos = [];
+    if (atendimento.medicamentos && Array.isArray(atendimento.medicamentos)) {
+      medicamentos = atendimento.medicamentos.map(med => ({
+        nome: med.nome || 'Medicação não informada',
+        quantidade: med.quantidade?.toString() || '1',
+        unidade: med.unidade || 'cx',
+        posologia: med.posologia || med.instrucoes || 'Conforme orientação médica',
+        duracao: med.duracao || '60 dias'
+      }));
+    } else if (atendimento.triagem?.medicamento || atendimento.medicamento) {
+      medicamentos = [{
+        nome: atendimento.triagem?.medicamento || atendimento.medicamento,
+        quantidade: '1',
+        unidade: 'cx',
+        posologia: 'Conforme orientação médica',
+        duracao: '60 dias'
+      }];
+    }
+    
     const payload = {
       paciente: {
         idExterno: atendimento.id,
-        nome: atendimento.paciente?.nome || atendimento.paciente_nome,
-        cpf: atendimento.paciente?.cpf || atendimento.paciente_cpf || '00000000000',
-        data_nascimento: atendimento.paciente?.data_nascimento || atendimento.paciente_data_nasc || '01/01/1980',
-        telefone: atendimento.paciente?.whatsapp || atendimento.paciente?.telefone || atendimento.paciente_telefone || '',
-        email: atendimento.paciente?.email || atendimento.paciente_email || ''
+        nome: atendimento.paciente?.nome || atendimento.paciente_nome || atendimento.pacienteNome || 'Paciente',
+        cpf: atendimento.paciente?.cpf || atendimento.paciente_cpf || atendimento.pacienteCpf || '00000000000',
+        data_nascimento: atendimento.paciente?.data_nascimento || atendimento.paciente_data_nasc || atendimento.pacienteNascimento || '01/01/1980',
+        telefone: atendimento.paciente?.whatsapp || atendimento.paciente?.telefone || atendimento.paciente_telefone || atendimento.pacienteTelefone || '',
+        email: atendimento.paciente?.email || atendimento.paciente_email || atendimento.pacienteEmail || ''
       },
-      medicamentos: [
-        {
-          nome: atendimento.triagem?.medicamento || atendimento.medicamento || 'Medicação não informada',
-          quantidade: '1',
-          unidade: 'cx',
-          posologia: 'Conforme orientação médica',
-          duracao: '60 dias'
-        }
-      ],
-      orientacoes: atendimento.prontuario?.conduta || 'Renovação de receita de uso contínuo.'
+      medicamentos: medicamentos.length > 0 ? medicamentos : [{
+        nome: 'Medicação não informada',
+        quantidade: '1',
+        unidade: 'cx',
+        posologia: 'Conforme orientação médica',
+        duracao: '60 dias'
+      }],
+      orientacoes: atendimento.prontuario?.conduta || atendimento.orientacoes || 'Renovação de receita de uso contínuo.'
     };
     
     const response = await axios.post(
@@ -329,10 +358,22 @@ async function verificarStatusConta() {
   };
 }
 
+// ========================
+// 📤 OBTER TOKEN PARA FRONTEND
+// ========================
+async function obterTokenParaFrontend() {
+  const token = await gerarTokenPrescritor();
+  if (!token) {
+    throw new Error('Não foi possível obter token para o frontend');
+  }
+  return token;
+}
+
 module.exports = {
   gerarTokenPrescritor,
   emitirReceita,
   testarConexao,
   renovarToken,
-  verificarStatusConta
+  verificarStatusConta,
+  obterTokenParaFrontend
 };
