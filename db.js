@@ -7,22 +7,22 @@ let pool = null;
 // ========================
 function initDB() {
   if (pool) return pool;
-  
+
   const databaseUrl = process.env.DATABASE_URL;
-  
+
   if (!databaseUrl) {
     console.error('❌ DATABASE_URL não encontrada. Adicione um banco PostgreSQL no Railway!');
     return null;
   }
-  
+
   console.log('✅ Conectando ao PostgreSQL...');
-  
+
   pool = new Pool({
     connectionString: databaseUrl,
     ssl: { rejectUnauthorized: false }
   });
-  
-  // Criar tabela se não existir
+
+  // Criar tabela principal de atendimentos (com novos campos)
   pool.query(`
     CREATE TABLE IF NOT EXISTS atendimentos (
       id VARCHAR(36) PRIMARY KEY,
@@ -32,16 +32,51 @@ function initDB() {
       paciente_email TEXT,
       paciente_data_nasc TEXT,
       triagem JSONB,
+      dados_clinicos JSONB,
       elegivel BOOLEAN,
       motivo TEXT,
       status VARCHAR(50),
       pagamento BOOLEAN DEFAULT false,
-      criado_em TIMESTAMP DEFAULT NOW()
+      pago_em TIMESTAMP,
+      decisao JSONB,
+      criado_em TIMESTAMP DEFAULT NOW(),
+      atualizado_em TIMESTAMP DEFAULT NOW()
     )
   `).then(() => {
     console.log('✅ Tabela "atendimentos" criada/verificada com sucesso!');
+    // Adicionar colunas novas se não existirem (migração segura)
+    return pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE atendimentos ADD COLUMN IF NOT EXISTS dados_clinicos JSONB;
+        ALTER TABLE atendimentos ADD COLUMN IF NOT EXISTS decisao JSONB;
+        ALTER TABLE atendimentos ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP;
+        ALTER TABLE atendimentos ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT NOW();
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END $$;
+    `);
+  }).then(() => {
+    console.log('✅ Colunas adicionais verificadas!');
   }).catch(err => {
-    console.error('❌ Erro ao criar tabela:', err);
+    console.error('❌ Erro ao criar/migrar tabela:', err);
+  });
+
+  // Criar tabela de log de decisões médicas
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS decisoes_log (
+      id SERIAL PRIMARY KEY,
+      atendimento_id VARCHAR(36) NOT NULL,
+      medico VARCHAR(100),
+      decisao VARCHAR(20) NOT NULL,
+      medicamento TEXT,
+      posologia TEXT,
+      observacao TEXT,
+      dados_clinicos JSONB,
+      criado_em TIMESTAMP DEFAULT NOW()
+    )
+  `).then(() => {
+    console.log('✅ Tabela "decisoes_log" criada/verificada com sucesso!');
+  }).catch(err => {
+    console.error('❌ Erro ao criar tabela decisoes_log:', err);
   });
 
   // Criar tabela de fila de suporte
@@ -59,7 +94,7 @@ function initDB() {
   }).catch(err => {
     console.error('❌ Erro ao criar tabela fila_suporte:', err);
   });
-  
+
   return pool;
 }
 
@@ -69,7 +104,7 @@ function initDB() {
 async function getAtendimentos() {
   const db = initDB();
   if (!db) return [];
-  
+
   try {
     const result = await db.query(
       'SELECT * FROM atendimentos ORDER BY criado_em DESC'
@@ -87,12 +122,12 @@ async function getAtendimentos() {
 async function salvarAtendimento(atendimento) {
   const db = initDB();
   if (!db) return false;
-  
+
   const query = `
     INSERT INTO atendimentos 
     (id, paciente_nome, paciente_cpf, paciente_telefone, paciente_email, 
-     paciente_data_nasc, triagem, elegivel, motivo, status, pagamento, criado_em)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     paciente_data_nasc, triagem, dados_clinicos, elegivel, motivo, status, pagamento, criado_em, atualizado_em)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     ON CONFLICT (id) DO UPDATE SET
       paciente_nome = EXCLUDED.paciente_nome,
       paciente_cpf = EXCLUDED.paciente_cpf,
@@ -100,12 +135,14 @@ async function salvarAtendimento(atendimento) {
       paciente_email = EXCLUDED.paciente_email,
       paciente_data_nasc = EXCLUDED.paciente_data_nasc,
       triagem = EXCLUDED.triagem,
+      dados_clinicos = EXCLUDED.dados_clinicos,
       elegivel = EXCLUDED.elegivel,
       motivo = EXCLUDED.motivo,
       status = EXCLUDED.status,
-      pagamento = EXCLUDED.pagamento
+      pagamento = EXCLUDED.pagamento,
+      atualizado_em = NOW()
   `;
-  
+
   try {
     await db.query(query, [
       atendimento.id,
@@ -115,11 +152,13 @@ async function salvarAtendimento(atendimento) {
       atendimento.paciente?.email || null,
       atendimento.paciente?.data_nascimento || null,
       JSON.stringify(atendimento.triagem || {}),
+      JSON.stringify(atendimento.dados_clinicos || {}),
       atendimento.elegivel,
       atendimento.motivo,
       atendimento.status,
       atendimento.pagamento || false,
-      atendimento.criadoEm || new Date().toISOString()
+      atendimento.criadoEm || new Date().toISOString(),
+      new Date().toISOString()
     ]);
     return true;
   } catch (err) {
@@ -134,7 +173,7 @@ async function salvarAtendimento(atendimento) {
 async function buscarAtendimentoPorId(id) {
   const db = initDB();
   if (!db) return null;
-  
+
   try {
     const result = await db.query(
       'SELECT * FROM atendimentos WHERE id = $1',
@@ -153,10 +192,10 @@ async function buscarAtendimentoPorId(id) {
 async function atualizarStatusPagamento(id, pagamento, status) {
   const db = initDB();
   if (!db) return false;
-  
+
   try {
     await db.query(
-      'UPDATE atendimentos SET pagamento = $1, status = $2 WHERE id = $3',
+      'UPDATE atendimentos SET pagamento = $1, status = $2, pago_em = NOW(), atualizado_em = NOW() WHERE id = $3',
       [pagamento, status, id]
     );
     return true;
@@ -167,23 +206,105 @@ async function atualizarStatusPagamento(id, pagamento, status) {
 }
 
 // ========================
-// ✅ ATUALIZAR STATUS (APROVAR/RECUSAR)
+// ✅ ATUALIZAR STATUS (APROVAR/RECUSAR) COM DECISÃO
 // ========================
-async function atualizarStatus(id, decisao) {
+async function atualizarStatus(id, decisao, dadosDecisao = null) {
   const db = initDB();
   if (!db) return false;
-  
-  const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : 'RECUSADO';
-  
+
+  const novoStatus = decisao === 'APROVAR' ? 'APROVADO' : decisao === 'RECUSAR' ? 'RECUSADO' : decisao;
+
   try {
-    await db.query(
-      'UPDATE atendimentos SET status = $1 WHERE id = $2',
-      [novoStatus, id]
-    );
+    if (dadosDecisao) {
+      await db.query(
+        'UPDATE atendimentos SET status = $1, decisao = $2, atualizado_em = NOW() WHERE id = $3',
+        [novoStatus, JSON.stringify(dadosDecisao), id]
+      );
+    } else {
+      await db.query(
+        'UPDATE atendimentos SET status = $1, atualizado_em = NOW() WHERE id = $2',
+        [novoStatus, id]
+      );
+    }
     return true;
   } catch (err) {
     console.error('Erro ao atualizar status:', err);
     return false;
+  }
+}
+
+// ========================
+// 📜 SALVAR LOG DE DECISÃO MÉDICA
+// ========================
+async function salvarDecisaoLog(log) {
+  const db = initDB();
+  if (!db) return false;
+
+  try {
+    await db.query(
+      `INSERT INTO decisoes_log 
+       (atendimento_id, medico, decisao, medicamento, posologia, observacao, dados_clinicos, criado_em)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        log.atendimento_id,
+        log.medico || 'medico',
+        log.decisao,
+        log.medicamento || null,
+        log.posologia || null,
+        log.observacao || null,
+        JSON.stringify(log.dados_clinicos || {})
+      ]
+    );
+    return true;
+  } catch (err) {
+    console.error('Erro ao salvar log de decisão:', err);
+    return false;
+  }
+}
+
+// ========================
+// 📜 BUSCAR LOGS DE DECISÃO
+// ========================
+async function getDecisoesLog(atendimentoId = null) {
+  const db = initDB();
+  if (!db) return [];
+
+  try {
+    let query = 'SELECT * FROM decisoes_log ORDER BY criado_em DESC';
+    let params = [];
+
+    if (atendimentoId) {
+      query = 'SELECT * FROM decisoes_log WHERE atendimento_id = $1 ORDER BY criado_em DESC';
+      params = [atendimentoId];
+    }
+
+    const result = await db.query(query, params);
+    return result.rows;
+  } catch (err) {
+    console.error('Erro ao buscar logs de decisão:', err);
+    return [];
+  }
+}
+
+// ========================
+// 📋 BUSCAR FILA VÁLIDA (pagos + elegíveis + status FILA)
+// ========================
+async function getFilaValida() {
+  const db = initDB();
+  if (!db) return [];
+
+  try {
+    const result = await db.query(
+      `SELECT * FROM atendimentos 
+       WHERE status = 'FILA' 
+       AND pagamento = true 
+       AND elegivel = true
+       ORDER BY pago_em ASC NULLS LAST, criado_em ASC`
+    );
+    return result.rows;
+  } catch (err) {
+    console.error('Erro ao buscar fila válida:', err);
+    return [];
   }
 }
 
@@ -193,19 +314,19 @@ async function atualizarStatus(id, decisao) {
 async function getEstatisticas() {
   const db = initDB();
   if (!db) return { total: 0, elegiveis: 0, pagos: 0, naFila: 0, aprovados: 0, recusados: 0 };
-  
+
   try {
     const result = await db.query(`
       SELECT 
         COUNT(*) as total,
         SUM(CASE WHEN elegivel = true THEN 1 ELSE 0 END) as elegiveis,
         SUM(CASE WHEN pagamento = true THEN 1 ELSE 0 END) as pagos,
-        SUM(CASE WHEN pagamento = true AND status = 'FILA' THEN 1 ELSE 0 END) as na_fila,
+        SUM(CASE WHEN pagamento = true AND status = 'FILA' AND elegivel = true THEN 1 ELSE 0 END) as na_fila,
         SUM(CASE WHEN status = 'APROVADO' THEN 1 ELSE 0 END) as aprovados,
         SUM(CASE WHEN status = 'RECUSADO' THEN 1 ELSE 0 END) as recusados
       FROM atendimentos
     `);
-    
+
     return {
       total: parseInt(result.rows[0].total) || 0,
       elegiveis: parseInt(result.rows[0].elegiveis) || 0,
@@ -226,7 +347,7 @@ async function getEstatisticas() {
 async function getAtendimentosPorStatus(status) {
   const db = initDB();
   if (!db) return [];
-  
+
   try {
     const result = await db.query(
       'SELECT * FROM atendimentos WHERE status = $1 ORDER BY criado_em DESC',
@@ -245,7 +366,7 @@ async function getAtendimentosPorStatus(status) {
 async function deletarAtendimento(id) {
   const db = initDB();
   if (!db) return false;
-  
+
   try {
     await db.query('DELETE FROM atendimentos WHERE id = $1', [id]);
     console.log(`🗑️ Atendimento ${id} deletado`);
@@ -262,10 +383,10 @@ async function deletarAtendimento(id) {
 async function deletarAtendimentosAntigos(dias) {
   const db = initDB();
   if (!db) return false;
-  
+
   try {
     await db.query(
-      'DELETE FROM atendimentos WHERE criado_em < NOW() - INTERVAL \'$1 days\'',
+      `DELETE FROM atendimentos WHERE criado_em < NOW() - INTERVAL '1 day' * $1`,
       [dias]
     );
     return true;
@@ -281,7 +402,7 @@ async function deletarAtendimentosAntigos(dias) {
 async function healthCheck() {
   const db = initDB();
   if (!db) return false;
-  
+
   try {
     await db.query('SELECT 1');
     return true;
@@ -296,7 +417,7 @@ async function healthCheck() {
 // ========================
 async function closeConnection() {
   if (!pool) return;
-  
+
   try {
     await pool.end();
     pool = null;
@@ -310,12 +431,6 @@ async function closeConnection() {
 // 📞 FILA DE SUPORTE
 // ========================
 
-/**
- * Adiciona um paciente à fila de suporte.
- * @param {string} telefone - Número de telefone do paciente (somente dígitos, 10-11 chars).
- * @param {string} nome - Nome do paciente.
- * @returns {Object|null} Registro inserido ou null em caso de erro.
- */
 async function adicionarFilaSuporte(telefone, nome) {
   const db = initDB();
   if (!db) return null;
@@ -334,10 +449,6 @@ async function adicionarFilaSuporte(telefone, nome) {
   }
 }
 
-/**
- * Retorna todos os pacientes com status 'aguardando', ordenados por criado_em ASC.
- * @returns {Array} Lista de registros da fila.
- */
 async function getFilaSuporte() {
   const db = initDB();
   if (!db) return [];
@@ -355,11 +466,6 @@ async function getFilaSuporte() {
   }
 }
 
-/**
- * Marca um paciente como respondido e o remove da fila ativa.
- * @param {number} id - ID do registro na fila.
- * @returns {Object|null} Registro atualizado ou null se não encontrado/erro.
- */
 async function responderFilaSuporte(id) {
   const db = initDB();
   if (!db) return null;
@@ -389,6 +495,9 @@ module.exports = {
   buscarAtendimentoPorId,
   atualizarStatusPagamento,
   atualizarStatus,
+  salvarDecisaoLog,
+  getDecisoesLog,
+  getFilaValida,
   getEstatisticas,
   getAtendimentosPorStatus,
   deletarAtendimento,
