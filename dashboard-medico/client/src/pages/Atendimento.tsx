@@ -39,7 +39,7 @@ export default function Atendimento() {
   });
   
   // Integração Memed
-  const memed = useMemed();
+  const memed = useMemed(atendimentoId);
 
   // Queries
   const atendimentoQuery = trpc.atendimentos.obter.useQuery(atendimentoId, {
@@ -143,15 +143,23 @@ export default function Atendimento() {
     }
 
     // Salvar prontuário primeiro
-    await salvarProntuarioMutation.mutateAsync({
-      atendimentoId,
-      medicamentos,
-      orientacoes,
-      diagnostico,
-    });
+    try {
+      await salvarProntuarioMutation.mutateAsync({
+        atendimentoId,
+        medicamentos,
+        orientacoes,
+        diagnostico,
+      });
+      console.log('✅ Prontuário salvo com sucesso');
+    } catch (error) {
+      toast.error('Erro ao salvar prontuário');
+      return;
+    }
 
     // Depois abrir o módulo da Memed para o médico finalizar a prescrição
     if (memed.memedReady && atendimento) {
+      console.log('📄 Abrindo Memed para finalização de prescrição...');
+      
       memed.abrirModuloPrescricao(
         {
           nome: atendimento.pacienteNome,
@@ -163,34 +171,14 @@ export default function Atendimento() {
         medicamentos
       );
       
-      // Registrar eventos para capturar a finalização
-      memed.registrarEventos({
-        onPrescricaoFinalizada: async (data) => {
-          toast.success('Prescrição finalizada na Memed!');
-          
-          // Aprovar o atendimento após finalização
-          aprovarMutation.mutate({
-            atendimentoId,
-            orientacoes,
-          });
-          
-          // Salvar link da receita se disponível
-          if (data.link || data.pdf) {
-            await salvarProntuarioMutation.mutateAsync({
-              atendimentoId,
-              medicamentos,
-              orientacoes,
-              diagnostico,
-            });
-          }
-        },
-        onErro: (erro) => {
-          toast.error(`Erro na Memed: ${erro?.message || 'Erro desconhecido'}`);
-        },
-      });
+      toast.info('Finalize a prescrição na interface da Memed');
+    } else if (!memed.memedReady) {
+      toast.error('Memed ainda está carregando. Tente novamente em alguns segundos.');
     } else {
-      toast.error('Memed não está pronta. Tente novamente.');
+      toast.error('Dados do paciente não disponíveis');
     }
+  };
+
   };
 
   const handleRecusar = () => {
@@ -431,12 +419,12 @@ export default function Atendimento() {
               <Button
                 onClick={handleAprovar}
                 className="flex-1 min-w-[120px] bg-green-600 hover:bg-green-700"
-                disabled={aprovarMutation.isPending || salvarProntuarioMutation.isPending}
+                disabled={aprovarMutation.isPending || salvarProntuarioMutation.isPending || memed.isOpeningModal || memed.isSavingReceipt}
               >
-                {aprovarMutation.isPending && (
+                {(aprovarMutation.isPending || salvarProntuarioMutation.isPending || memed.isOpeningModal || memed.isSavingReceipt) && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Aprovar & Emitir Receita
+                {memed.isOpeningModal ? 'Abrindo Memed...' : memed.isSavingReceipt ? 'Salvando Receita...' : 'Aprovar & Emitir Receita'}
               </Button>
               <Button
                 onClick={handleRecusar}

@@ -1,20 +1,16 @@
-# Configuração da Integração Memed - Dr. Prescreve
+# Configuração Técnica Memed - Dr. Prescreve
 
-Este documento descreve como configurar e utilizar a integração com a plataforma Memed para emissão de receitas digitais assinadas.
+Este documento detalha a implementação técnica da integração com a Memed, focada em compliance e captura de eventos.
 
-## 🚀 Fluxo de Funcionamento (Corrigido)
+## 🚀 Fluxo Técnico Implementado
 
-Para garantir o compliance e a validade jurídica (assinatura digital), a integração segue este fluxo:
-
-1.  **Backend**: Gera o token de autenticação do prescritor (Dr. Max Vinicius).
-2.  **Frontend**: Carrega o script `MdHub` da Memed usando o token gerado.
-3.  **Médico**: Ao clicar em "Aprovar & Emitir Receita", o sistema abre a interface da Memed com os dados do paciente e medicamentos pré-preenchidos.
-4.  **Finalização**: O médico revisa e finaliza a prescrição manualmente na interface da Memed.
-5.  **Evento**: O sistema captura o evento de conclusão da Memed, aprova o atendimento no nosso banco de dados e salva o link da receita.
+1.  **Token Dinâmico**: O backend gera um token de prescritor via API da Memed.
+2.  **Carregamento MdHub**: O frontend carrega o script `https://integrations.memed.com.br/sinapse-prescricao/app.js` injetando o `data-token` dinamicamente.
+3.  **Abertura do Módulo**: Ao clicar em "Aprovar", o sistema pré-preenche os dados do paciente e medicamentos e abre o formulário da Memed via `MdHub.command.send`.
+4.  **Captura de Evento**: O sistema escuta o evento `prescription:completed` disparado pelo widget da Memed após a assinatura.
+5.  **Sincronização**: Ao capturar o evento, o frontend envia o link da receita para o backend via `salvarReceitaMemed`, que vincula ao atendimento e atualiza o status para `APROVADO`.
 
 ## ⚙️ Variáveis de Ambiente (.env)
-
-Adicione as seguintes variáveis ao seu arquivo `.env` no servidor:
 
 ```env
 # Credenciais da API Memed
@@ -34,15 +30,22 @@ MEMED_PRESCRITOR_TELEFONE=11968123900
 MEMED_PRESCRITOR_DATA_NASC=1988-02-09
 ```
 
-## 🛠️ Notas Importantes
+## ⚠️ Checklist de Produção
 
-- **Segurança**: Nunca versione o arquivo `.env` com as chaves reais.
-- **MdHub**: A interface da Memed é carregada dinamicamente no frontend. Certifique-se de que o domínio onde o app está rodando está autorizado no painel da Memed.
-- **Assinatura**: A assinatura digital é realizada exclusivamente dentro do módulo da Memed.
+1.  **Domínio Liberado**: Você **DEVE** solicitar à Memed a liberação do domínio onde o sistema está hospedado (ex: `app.doctorprescreve.com.br`). Sem isso, o widget não carregará.
+2.  **HTTPS**: A integração só funciona em ambientes seguros (HTTPS).
+3.  **Chaves de Produção**: Certifique-se de usar as chaves de produção fornecidas pela Memed.
 
-## 🧪 Testes
+## 🛠️ Comandos de Teste
 
-Para testar a conexão com a API:
+Testar geração de token no backend:
 ```bash
 node -e "require('./memed').testarConexao().then(console.log)"
 ```
+
+## 📂 Arquivos Modificados
+
+- `memed.js`: Lógica de autenticação e cache de tokens.
+- `dashboard-medico/server/routers.ts`: Novos endpoints `obterTokenMemed` e `salvarReceitaMemed`.
+- `dashboard-medico/client/src/hooks/useMemed.ts`: Hook principal de integração e captura de eventos.
+- `dashboard-medico/client/src/pages/Atendimento.tsx`: Interface de atendimento integrada.

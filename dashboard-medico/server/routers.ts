@@ -228,6 +228,33 @@ export const appRouter = router({
       }
     }),
 
+    // Salvar link da receita gerada pela Memed
+    salvarReceitaMemed: medicoProcedure
+      .input(
+        z.object({
+          atendimentoId: z.string(),
+          receitaUrl: z.string(),
+          receitaId: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const sucesso = await salvarProntuario(input.atendimentoId, {
+          receitaPdfUrl: input.receitaUrl,
+        });
+
+        if (!sucesso) {
+          throw new TRPCError({ 
+            code: 'INTERNAL_SERVER_ERROR', 
+            message: 'Erro ao salvar link da receita' 
+          });
+        }
+
+        // Também atualiza o status do atendimento para APROVADO se ainda não estiver
+        await atualizarStatusAtendimento(input.atendimentoId, 'APROVADO');
+
+        return { sucesso: true };
+      }),
+
     // Recusar atendimento
     recusar: medicoProcedure
       .input(z.string())
