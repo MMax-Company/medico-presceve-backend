@@ -14,7 +14,39 @@ app.use(express.json())
 app.use(helmet())
 
 // ========================
+// 📱 FUNÇÃO WHATSAPP (MODO TESTE)
+// ========================
+
+const WHATSAPP_MODE = 'test';  // Mude para 'production' quando liberado
+
+async function enviarWhatsAppOficial(telefone, mensagem) {
+  if (WHATSAPP_MODE === 'test') {
+    console.log(`\n📱 [MODO TESTE] WhatsApp NÃO enviado`);
+    console.log(`   Para: ${telefone}`);
+    console.log(`   Mensagem: ${mensagem.substring(0, 100)}...\n`);
+    return true;
+  }
+  
+  try {
+    const axios = require('axios');
+    const response = await axios.post(
+      `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
+      {
+        token: process.env.ULTRAMSG_TOKEN,
+        to: telefone,
+        body: mensagem
+      }
+    );
+    return response.data.success === true;
+  } catch (error) {
+    console.error('❌ Erro WhatsApp:', error.message);
+    return false;
+  }
+} 
+
+// ========================
 // 🔐 CRIPTOGRAFIA
+// ========================
 // ========================
 
 const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
@@ -318,14 +350,12 @@ app.get('/api/payment/:id', async (req, res) => {
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature']
 
-  // Se não tiver webhook secret configurado, apenas confirma recebimento
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
     console.warn('⚠️ STRIPE_WEBHOOK_SECRET não configurado. Pulando verificação.')
     return res.json({ received: true })
   }
 
   try {
-    // Verificar assinatura do webhook
     const event = stripe.webhooks.constructEvent(
       req.body, 
       sig, 
@@ -334,19 +364,15 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 
     console.log(`📡 Webhook recebido: ${event.type}`)
 
-    // Processar evento de checkout completo
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object
       const atendimentoId = session.metadata?.atendimentoId
 
       if (!atendimentoId) {
-        console.error('❌ Webhook: atendimentoId não encontrado na metadata')
+        console.error('❌ Webhook: atendimentoId não encontrado')
         return res.json({ received: true })
       }
 
-      console.log(`💰 Pagamento confirmado para atendimento: ${atendimentoId}`)
-
-      // Buscar atendimento
       const at = await db.buscarAtendimentoPorId(atendimentoId)
       
       if (!at) {
@@ -354,40 +380,22 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
         return res.json({ received: true })
       }
 
-      // Verificar se já foi processado
       if (at.pagamento) {
         console.log(`⚠️ Pagamento já processado para: ${atendimentoId}`)
         return res.json({ received: true })
       }
 
-      // Atualizar status do pagamento
       await db.atualizarStatusPagamento(atendimentoId, true, 'FILA')
 
-      // Enviar WhatsApp confirmando pagamento
       const telefone = decrypt(at.paciente_telefone)
       const nome = decrypt(at.paciente_nome)
 
       if (telefone) {
-        const msg = `✅ Pagamento confirmado, ${nome}!\n\n` +
-                   `👨‍⚕️ Seu atendimento #${atendimentoId.substring(0, 8)} entrou na fila.\n\n` +
-                   `⏳ Você receberá a resposta em até 24h úteis.\n\n` +
-                   `🔗 Acompanhe: ${BASE_URL}/painel-medico`
-        
+        const msg = `✅ Pagamento confirmado, ${nome}!\n\n👨‍⚕️ Seu atendimento entrou na fila.\n\n⏳ Você receberá a resposta em até 24h.`
         await enviarWhatsAppOficial(telefone, msg)
       }
 
-      console.log(`✅ Pagamento processado com sucesso para: ${nome} (${atendimentoId})`)
-    }
-
-    // Evento de pagamento falhou
-    if (event.type === 'checkout.session.expired') {
-      const session = event.data.object
-      const atendimentoId = session.metadata?.atendimentoId
-      
-      if (atendimentoId) {
-        console.log(`⏰ Sessão expirada para atendimento: ${atendimentoId}`)
-        await db.atualizarStatus(atendimentoId, 'PAGAMENTO_EXPIRADO')
-      }
+      console.log(`✅ Pagamento processado para: ${nome} (${atendimentoId})`)
     }
 
     res.json({ received: true })
@@ -397,7 +405,6 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
     res.status(400).send(`Webhook Error: ${e.message}`)
   }
 })
-
 // ========================
 // 3. PÁGINAS DE RETORNO
 // ========================
@@ -2082,8 +2089,6 @@ app.post('/api/webhook/receita', auth, async (req, res) => {
     res.status(500).json({ error: 'Erro ao processar webhook' })
   }
 })
-
-
 
 // ========================
 // 🚀 SERVER
