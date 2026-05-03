@@ -526,36 +526,13 @@ app.post('/api/decisao/:id', auth, async (req, res) => {
 
     if (decisao === 'APROVAR') {
       const msg = `✅ Ótimas notícias, ${nome}!\n\n🎉 Sua receita foi APROVADA!\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Você pode buscar a receita digital no seu perfil.\n\n💊 A receita é válida por 30 dias.`
-      await enviarWhatsApp(telefone, msg)
+      await enviarWhatsAppOficial(telefone, msg)
     } else {
       const msg = `❌ Infelizmente, sua receita foi RECUSADA.\n\n📋 Número: ${req.params.id.substring(0, 8)}\n\n🏥 Procure um atendimento presencial para renovar sua receita.`
-      await enviarWhatsApp(telefone, msg)
-      const telefone = receita.paciente?.telefone
-
-          if (telefone && receita.pdfUrl) {
-      await enviarReceitaWhatsApp(telefone, receita.pdfUrl)   
+      await enviarWhatsAppOficial(telefone, msg)
     }
 
     res.json({ success: true, novoStatus })
-  } catch(e) {
-    res.status(500).json({ error: e.message })
-  }
-})
-
-app.get('/api/atendimento/:id', auth, async (req, res) => {
-  try {
-    const at = await db.buscarAtendimentoPorId(req.params.id)
-    if (!at) {
-      return res.status(404).json({ error: 'Atendimento não encontrado' })
-    }
-    res.json({
-      ...at,
-      paciente_nome: decrypt(at.paciente_nome),
-      paciente_telefone: decrypt(at.paciente_telefone),
-      paciente_cpf: decrypt(at.paciente_cpf),
-      paciente_email: decrypt(at.paciente_email),
-      doencas: decrypt(at.doencas)
-    })
   } catch(e) {
     res.status(500).json({ error: e.message })
   }
