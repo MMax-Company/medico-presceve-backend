@@ -173,132 +173,15 @@ async function gerarTokenPrescritor(forceRefresh = false) {
   }
 }
 
-
-
 // ========================
-// 💊 EMITIR RECEITA VIA MEMED
+// 📝 NOTA SOBRE EMISSÃO
 // ========================
-async function emitirReceita(atendimento) {
-  try {
-    const token = await gerarTokenPrescritor();
-    
-    if (!token) {
-      console.log('⚠️ Usando fallback - Memed indisponível');
-      return gerarReceitaFallback(atendimento, 'Token não obtido');
-    }
-    
-    console.log(`📝 Emitindo receita para: ${atendimento.paciente?.nome || atendimento.paciente_nome}`);
-    
-    // Validar dados mínimos
-    if (!atendimento.paciente?.nome && !atendimento.paciente_nome) {
-      throw new Error('Nome do paciente não informado');
-    }
-    
-    // Extrair medicamentos do atendimento (suporta múltiplos formatos)
-    let medicamentos = [];
-    if (atendimento.medicamentos && Array.isArray(atendimento.medicamentos)) {
-      medicamentos = atendimento.medicamentos.map(med => ({
-        nome: med.nome || 'Medicação não informada',
-        quantidade: med.quantidade?.toString() || '1',
-        unidade: med.unidade || 'cx',
-        posologia: med.posologia || med.instrucoes || 'Conforme orientação médica',
-        duracao: med.duracao || '60 dias'
-      }));
-    } else if (atendimento.triagem?.medicamento || atendimento.medicamento) {
-      medicamentos = [{
-        nome: atendimento.triagem?.medicamento || atendimento.medicamento,
-        quantidade: '1',
-        unidade: 'cx',
-        posologia: 'Conforme orientação médica',
-        duracao: '60 dias'
-      }];
-    }
-    
-    const payload = {
-      paciente: {
-        idExterno: atendimento.id,
-        nome: atendimento.paciente?.nome || atendimento.paciente_nome || atendimento.pacienteNome || 'Paciente',
-        cpf: atendimento.paciente?.cpf || atendimento.paciente_cpf || atendimento.pacienteCpf || '00000000000',
-        data_nascimento: atendimento.paciente?.data_nascimento || atendimento.paciente_data_nasc || atendimento.pacienteNascimento || '01/01/1980',
-        telefone: atendimento.paciente?.whatsapp || atendimento.paciente?.telefone || atendimento.paciente_telefone || atendimento.pacienteTelefone || '',
-        email: atendimento.paciente?.email || atendimento.paciente_email || atendimento.pacienteEmail || ''
-      },
-      medicamentos: medicamentos.length > 0 ? medicamentos : [{
-        nome: 'Medicação não informada',
-        quantidade: '1',
-        unidade: 'cx',
-        posologia: 'Conforme orientação médica',
-        duracao: '60 dias'
-      }],
-      orientacoes: atendimento.prontuario?.conduta || atendimento.orientacoes || 'Renovação de receita de uso contínuo.'
-    };
-    
-    const response = await axios.post(
-      `${MEMED_API_URL}/prescricao?token=${token}`,
-      payload,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/vnd.api+json',
-          'User-Agent': 'DoctorPrescreve/1.0'
-        },
-        timeout: 45000
-      }
-    );
-    
-    console.log('✅ Receita emitida com sucesso na Memed!');
-    
-    const result = {
-      sucesso: true,
-      link: response.data?.data?.attributes?.link || `https://integrations.memed.com.br/receita/${atendimento.id}`,
-      pdf: response.data?.data?.attributes?.pdf || `https://integrations.memed.com.br/receita/${atendimento.id}/pdf`,
-      id: response.data?.data?.id,
-      emitidaEm: new Date().toISOString(),
-      plataforma: 'Memed',
-      protocolo: response.data?.data?.attributes?.protocolo || null
-    };
-    
-    return result;
-    
-  } catch (error) {
-    console.error('❌ Erro ao emitir receita via Memed:');
-    
-    let erroDetalhado = 'Erro desconhecido';
-    if (error.response) {
-      erroDetalhado = `HTTP ${error.response.status}: ${JSON.stringify(error.response.data)}`;
-      console.error(`   Response: ${erroDetalhado}`);
-    } else if (error.code === 'ECONNABORTED') {
-      erroDetalhado = 'Timeout - A API Memed demorou para responder';
-      console.error(`   Timeout: ${erroDetalhado}`);
-    } else {
-      erroDetalhado = error.message;
-      console.error(`   Mensagem: ${erroDetalhado}`);
-    }
-    
-    return gerarReceitaFallback(atendimento, erroDetalhado);
-  }
-}
-
-// ========================
-// 🔥 FALLBACK (Para quando Memed estiver offline)
-// ========================
-function gerarReceitaFallback(atendimento, motivo = 'API Memed indisponível') {
-  const timestamp = Date.now();
-  const receitaId = atendimento?.id || `receita_${timestamp}`;
-  
-  console.log(`📄 Gerando receita via fallback: ${receitaId}`);
-  
-  return {
-    sucesso: true,
-    link: `${process.env.BASE_URL || 'https://doctorprescreve.com.br'}/receita/${receitaId}`,
-    pdf: `${process.env.BASE_URL || 'https://doctorprescreve.com.br'}/receita/${receitaId}/pdf`,
-    observacao: `Receita gerada em modo fallback: ${motivo}`,
-    plataforma: 'Doctor Prescreve (Fallback)',
-    emitidaEm: new Date().toISOString(),
-    fallback: true,
-    receitaId
-  };
-}
+// A emissão de receitas NÃO deve ser feita via Backend para garantir compliance e assinatura digital.
+// O fluxo correto é:
+// 1. Backend gera o token do prescritor.
+// 2. Frontend carrega o MdHub com o token.
+// 3. Médico finaliza a prescrição na interface da Memed.
+// 4. Frontend captura o evento de finalização e notifica o backend.
 
 // ========================
 // 🔄 FORÇAR RENOVAÇÃO DO TOKEN
@@ -371,7 +254,6 @@ async function obterTokenParaFrontend() {
 
 module.exports = {
   gerarTokenPrescritor,
-  emitirReceita,
   testarConexao,
   renovarToken,
   verificarStatusConta,

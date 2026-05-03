@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowLeft, Plus, Trash2, Clock, FileText } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useRoute, useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useMemed } from "@/hooks/useMemed";
 
@@ -150,24 +150,59 @@ export default function Atendimento() {
       diagnostico,
     });
 
-    // Depois aprovar (que dispara a emissão da receita na Memed)
-    aprovarMutation.mutate({
-      atendimentoId,
-      orientacoes,
-    });
+    // Depois abrir o módulo da Memed para o médico finalizar a prescrição
+    if (memed.memedReady && atendimento) {
+      memed.abrirModuloPrescricao(
+        {
+          nome: atendimento.pacienteNome,
+          cpf: atendimento.pacienteCpf,
+          dataNascimento: atendimento.pacienteNascimento,
+          telefone: atendimento.pacienteTelefone,
+          email: atendimento.pacienteEmail,
+        },
+        medicamentos
+      );
+      
+      // Registrar eventos para capturar a finalização
+      memed.registrarEventos({
+        onPrescricaoFinalizada: async (data) => {
+          toast.success('Prescrição finalizada na Memed!');
+          
+          // Aprovar o atendimento após finalização
+          aprovarMutation.mutate({
+            atendimentoId,
+            orientacoes,
+          });
+          
+          // Salvar link da receita se disponível
+          if (data.link || data.pdf) {
+            await salvarProntuarioMutation.mutateAsync({
+              atendimentoId,
+              medicamentos,
+              orientacoes,
+              diagnostico,
+            });
+          }
+        },
+        onErro: (erro) => {
+          toast.error(`Erro na Memed: ${erro?.message || 'Erro desconhecido'}`);
+        },
+      });
+    } else {
+      toast.error('Memed não está pronta. Tente novamente.');
+    }
   };
 
   const handleRecusar = () => {
     recusarMutation.mutate(atendimentoId);
   };
 
-  const handleVisualizarReceita = () => {
-    if (memed.tokenMemed && atendimento.id) {
-      memed.abrirModuloPrescricao(atendimento.id);
-    } else {
-      toast.error('Token da Memed não disponível');
-    }
-  };
+  // Cleanup dos eventos quando o componente desmontar
+  useEffect(() => {
+    return () => {
+      memed.desregistrarEventos();
+    };
+  }, [memed]);
 
   const tempoRestante = atendimento.lockedUntil
     ? Math.max(
@@ -414,16 +449,7 @@ export default function Atendimento() {
                 )}
                 Recusar
               </Button>
-              {prontuario?.receitaPdfUrl && (
-                <Button
-                  onClick={handleVisualizarReceita}
-                  variant="outline"
-                  className="flex-1 min-w-[120px] border-blue-500 text-blue-600 hover:bg-blue-50"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Ver Receita
-                </Button>
-              )}
+
             </div>
           </div>
         </div>

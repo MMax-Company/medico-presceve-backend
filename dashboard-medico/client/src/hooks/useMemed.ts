@@ -1,13 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 
 /**
  * Hook para integração com a plataforma Memed
- * Gerencia o carregamento do script e eventos da Memed
+ * Fluxo correto:
+ * 1. Backend gera token do prescritor
+ * 2. Frontend carrega o MdHub com o token
+ * 3. Médico finaliza a prescrição na interface Memed
+ * 4. Frontend captura evento de finalização
  */
 export function useMemed() {
   const tokenQuery = trpc.decisoes.obterTokenMemed.useQuery();
   const scriptLoaded = useRef(false);
+  const [memedReady, setMemedReady] = useState(false);
 
   // Carregar o script da Memed
   useEffect(() => {
@@ -20,6 +25,18 @@ export function useMemed() {
     script.onload = () => {
       console.log('✅ Script da Memed carregado com sucesso');
       scriptLoaded.current = true;
+      
+      // Aguardar o MdHub estar pronto
+      const checkMdHub = setInterval(() => {
+        if ((window as any).MdHub) {
+          clearInterval(checkMdHub);
+          setMemedReady(true);
+          console.log('✅ MdHub pronto para uso');
+        }
+      }, 100);
+      
+      // Timeout de 5 segundos
+      setTimeout(() => clearInterval(checkMdHub), 5000);
     };
     script.onerror = () => {
       console.error('❌ Erro ao carregar script da Memed');
@@ -35,9 +52,21 @@ export function useMemed() {
 
   /**
    * Abre o módulo de prescrição da Memed
-   * @param prescricaoId - ID da prescrição a visualizar
+   * O médico finaliza a prescrição manualmente na interface Memed
    */
-  const abrirModuloPrescricao = (prescricaoId: string) => {
+  const abrirModuloPrescricao = (dadosPaciente: {
+    nome: string;
+    cpf: string;
+    dataNascimento?: string;
+    telefone?: string;
+    email?: string;
+  }, medicamentos: Array<{
+    nome: string;
+    dosagem: string;
+    duracao: string;
+    quantidade: number;
+    instrucoes?: string;
+  }>) => {
     if (typeof window === 'undefined') return;
 
     const MdHub = (window as any).MdHub;
@@ -46,45 +75,14 @@ export function useMemed() {
       return;
     }
 
-    console.log(`📝 Abrindo módulo de prescrição: ${prescricaoId}`);
-    MdHub.command.send(
-      'plataforma.prescricao',
-      'viewPrescription',
-      prescricaoId
-    );
-  };
-
-  /**
-   * Cria uma nova prescrição na Memed
-   * @param dadosPaciente - Dados do paciente
-   * @param medicamentos - Lista de medicamentos
-   */
-  const criarPrescricao = (
-    dadosPaciente: {
-      nome: string;
-      cpf: string;
-      dataNascimento?: string;
-      telefone?: string;
-      email?: string;
-    },
-    medicamentos: Array<{
-      nome: string;
-      dosagem: string;
-      duracao: string;
-      quantidade: number;
-      instrucoes?: string;
-    }>
-  ) => {
-    if (typeof window === 'undefined') return;
-
-    const MdHub = (window as any).MdHub;
-    if (!MdHub?.command?.send) {
-      console.error('❌ MdHub não disponível');
+    if (!tokenQuery.data?.token) {
+      console.error('❌ Token da Memed não disponível');
       return;
     }
 
-    console.log('📝 Criando nova prescrição na Memed...');
-
+    console.log('📝 Abrindo módulo de prescrição da Memed...');
+    
+    // Preparar dados para o MdHub
     const payload = {
       paciente: {
         nome: dadosPaciente.nome,
@@ -102,19 +100,22 @@ export function useMemed() {
       })),
     };
 
+    // Enviar comando para abrir o módulo
     MdHub.command.send(
       'plataforma.prescricao',
-      'createPrescription',
+      'openPrescriptionForm',
       payload
     );
   };
 
   /**
    * Registra listeners para eventos da Memed
+   * Eventos importantes:
+   * - prescriptionFinalized: Prescrição foi finalizada e assinada
+   * - prescriptionError: Erro ao finalizar prescrição
    */
   const registrarEventos = (callbacks: {
-    onPrescricaoImpresa?: (data: any) => void;
-    onPrescricaoExcluida?: (data: any) => void;
+    onPrescricaoFinalizada?: (data: any) => void;
     onErro?: (erro: any) => void;
   }) => {
     if (typeof window === 'undefined') return;
@@ -125,21 +126,27 @@ export function useMemed() {
       return;
     }
 
-    // Evento: Prescrição impressa
-    if (callbacks.onPrescricaoImpresa) {
+    // Evento: Prescrição finalizada e assinada
+    if (callbacks.onPrescricaoFinalizada) {
       MdHub.event.subscribe(
         'plataforma.prescricao',
-        'prescriptionPrinted',
-        callbacks.onPrescricaoImpresa
+        'prescriptionFinalized',
+        (data: any) => {
+          console.log('✅ Prescrição finalizada na Memed:', data);
+          callbacks.onPrescricaoFinalizada?.(data);
+        }
       );
     }
 
-    // Evento: Prescrição excluída
-    if (callbacks.onPrescricaoExcluida) {
+    // Evento: Erro ao finalizar prescrição
+    if (callbacks.onErro) {
       MdHub.event.subscribe(
         'plataforma.prescricao',
-        'prescriptionDeleted',
-        callbacks.onPrescricaoExcluida
+        'prescriptionError',
+        (error: any) => {
+          console.error('❌ Erro na prescrição:', error);
+          callbacks.onErro?.(error);
+        }
       );
     }
 
@@ -155,48 +162,18 @@ export function useMemed() {
     const MdHub = (window as any).MdHub;
     if (!MdHub?.event?.unsubscribe) return;
 
-    MdHub.event.unsubscribe('plataforma.prescricao', 'prescriptionPrinted');
-    MdHub.event.unsubscribe('plataforma.prescricao', 'prescriptionDeleted');
+    MdHub.event.unsubscribe('plataforma.prescricao', 'prescriptionFinalized');
+    MdHub.event.unsubscribe('plataforma.prescricao', 'prescriptionError');
 
     console.log('✅ Listeners de eventos da Memed removidos');
-  };
-
-  /**
-   * Configura dados do prescritor
-   */
-  const configurarPrescritor = (dados: {
-    nome: string;
-    crm: string;
-    especialidade?: string;
-    cidade?: string;
-  }) => {
-    if (typeof window === 'undefined') return;
-
-    const MdHub = (window as any).MdHub;
-    if (!MdHub?.config?.set) {
-      console.error('❌ MdHub config não disponível');
-      return;
-    }
-
-    console.log('⚙️ Configurando dados do prescritor na Memed...');
-
-    MdHub.config.set({
-      prescritor: {
-        nome: dados.nome,
-        crm: dados.crm,
-        especialidade: dados.especialidade,
-        cidade: dados.cidade,
-      },
-    });
   };
 
   return {
     tokenMemed: tokenQuery.data?.token,
     isLoadingToken: tokenQuery.isLoading,
+    memedReady,
     abrirModuloPrescricao,
-    criarPrescricao,
     registrarEventos,
     desregistrarEventos,
-    configurarPrescritor,
   };
 }

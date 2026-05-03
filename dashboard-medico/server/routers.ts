@@ -16,7 +16,7 @@ import {
   encrypt,
 } from "./db";
 import { TRPCError } from "@trpc/server";
-import { emitirReceita, obterTokenParaFrontend } from "../../memed";
+import { obterTokenParaFrontend } from "../../memed";
 
 // Procedimento apenas para médicos
 const medicoProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -203,25 +203,16 @@ export const appRouter = router({
           orientacoes: input.orientacoes || prontuario?.orientacoes || '',
         };
 
-        // Emitir receita na Memed
-        const resultadoMemed = await emitirReceita(dadosAtendimento);
-        
+        // O status agora é atualizado após a finalização na Memed via Frontend
+        // Mas permitimos aprovação manual se necessário
         const sucesso = await atualizarStatusAtendimento(input.atendimentoId, 'APROVADO');
         if (!sucesso) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao aprovar atendimento' });
         }
 
-        // Se a Memed retornou um link, salvar no prontuário
-        if (resultadoMemed.sucesso && resultadoMemed.link) {
-          await salvarProntuario(input.atendimentoId, {
-            receitaPdfUrl: resultadoMemed.pdf || resultadoMemed.link,
-          });
-        }
-
         return { 
           sucesso: true, 
-          mensagem: 'Atendimento aprovado com sucesso',
-          memed: resultadoMemed 
+          mensagem: 'Atendimento aprovado com sucesso'
         };
       }),
     // Obter token da Memed para o frontend
