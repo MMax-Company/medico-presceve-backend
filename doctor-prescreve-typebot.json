@@ -1,0 +1,201 @@
+{
+  "version": "1.0",
+  "name": "doctor-prescreve-flow",
+  "startNode": "inicio",
+  "nodes": [
+    {
+      "id": "inicio",
+      "type": "message",
+      "data": {
+        "text": "Olá 👋\nEste é o assistente Doctor Prescreve.\nSolicite sua renovação de receita de forma segura."
+      },
+      "next": "lgpd"
+    },
+    {
+      "id": "lgpd",
+      "type": "choice",
+      "data": {
+        "text": "Para continuar, você aceita os termos?\n\n☑ LGPD\n☑ Telemedicina\n☑ Veracidade das informações",
+        "options": [
+          {
+            "label": "CIENTE E AUTORIZO",
+            "value": "ok",
+            "next": "sinais_alerta"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sinais_alerta",
+      "type": "choice",
+      "data": {
+        "text": "Nas últimas 48h você apresentou algum desses sintomas?",
+        "options": [
+          { "label": "Dor no peito", "value": "alerta" },
+          { "label": "Falta de ar", "value": "alerta" },
+          { "label": "Desmaio", "value": "alerta" },
+          { "label": "Nenhum", "value": "ok" }
+        ]
+      },
+      "next": [
+        {
+          "condition": "event.payload.value === 'alerta'",
+          "node": "bloqueio"
+        },
+        {
+          "condition": "event.payload.value === 'ok'",
+          "node": "apresentacao"
+        }
+      ]
+    },
+    {
+      "id": "bloqueio",
+      "type": "message",
+      "data": {
+        "text": "🚨 Identificamos sinais de alerta.\nProcure imediatamente um pronto atendimento."
+      },
+      "next": "fim"
+    },
+    {
+      "id": "apresentacao",
+      "type": "input",
+      "data": {
+        "text": "Como você gostaria de ser chamado e sua idade?",
+        "variable": "user.apresentacao"
+      },
+      "next": "medicamento"
+    },
+    {
+      "id": "medicamento",
+      "type": "input",
+      "data": {
+        "text": "Qual medicamento deseja renovar?",
+        "variable": "user.medicamento"
+      },
+      "next": "dosagem"
+    },
+    {
+      "id": "dosagem",
+      "type": "input",
+      "data": {
+        "text": "Qual a dosagem?",
+        "variable": "user.dosagem"
+      },
+      "next": "frequencia"
+    },
+    {
+      "id": "frequencia",
+      "type": "input",
+      "data": {
+        "text": "Quantas vezes ao dia?",
+        "variable": "user.frequencia"
+      },
+      "next": "tempo_uso"
+    },
+    {
+      "id": "tempo_uso",
+      "type": "choice",
+      "data": {
+        "text": "Há quanto tempo usa o medicamento?",
+        "options": [
+          { "label": "< 1 mês", "value": "curto" },
+          { "label": "1 a 6 meses", "value": "medio" },
+          { "label": "> 6 meses", "value": "longo" }
+        ]
+      },
+      "next": [
+        {
+          "condition": "event.payload.value === 'curto'",
+          "node": "bloqueio_recente"
+        },
+        {
+          "condition": "true",
+          "node": "dados"
+        }
+      ]
+    },
+    {
+      "id": "bloqueio_recente",
+      "type": "message",
+      "data": {
+        "text": "Tratamento recente. Recomendamos avaliação presencial."
+      },
+      "next": "fim"
+    },
+    {
+      "id": "dados",
+      "type": "input",
+      "data": {
+        "text": "Informe seu nome completo",
+        "variable": "user.nome"
+      },
+      "next": "cpf"
+    },
+    {
+      "id": "cpf",
+      "type": "input",
+      "data": {
+        "text": "Informe seu CPF",
+        "variable": "user.cpf"
+      },
+      "next": "pagamento"
+    },
+    {
+      "id": "pagamento",
+      "type": "message",
+      "data": {
+        "text": "💳 Pagamento de R$ 69,90 confirmado.\nAguarde avaliação médica."
+      },
+      "next": "avaliacao"
+    },
+    {
+      "id": "avaliacao",
+      "type": "message",
+      "data": {
+        "text": "Sua solicitação está em análise."
+      },
+      "next": "resultado"
+    },
+    {
+      "id": "resultado",
+      "type": "choice",
+      "data": {
+        "text": "Status da avaliação:",
+        "options": [
+          { "label": "Aprovado", "value": "ok" },
+          { "label": "Reprovado", "value": "no" }
+        ]
+      },
+      "next": [
+        {
+          "condition": "event.payload.value === 'ok'",
+          "node": "aprovado"
+        },
+        {
+          "condition": "event.payload.value === 'no'",
+          "node": "reprovado"
+        }
+      ]
+    },
+    {
+      "id": "aprovado",
+      "type": "message",
+      "data": {
+        "text": "✅ Receita aprovada. Será enviada no WhatsApp."
+      },
+      "next": "fim"
+    },
+    {
+      "id": "reprovado",
+      "type": "message",
+      "data": {
+        "text": "❌ Não foi possível aprovar. Procure atendimento presencial."
+      },
+      "next": "fim"
+    },
+    {
+      "id": "fim",
+      "type": "end"
+    }
+  ]
+}
