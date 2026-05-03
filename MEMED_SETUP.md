@@ -1,14 +1,24 @@
-# Configuração Técnica Memed - Dr. Prescreve
+# Configuração Técnica Memed - Dr. Prescreve (Checklist Rigoroso)
 
-Este documento detalha a implementação técnica da integração com a Memed, focada em compliance e captura de eventos.
+Este documento detalha a implementação técnica da integração com a Memed, focada nos 7 pontos críticos para funcionamento em produção.
 
-## 🚀 Fluxo Técnico Implementado
+## ✅ Checklist de Implementação (Os 7 Pontos)
 
-1.  **Token Dinâmico**: O backend gera um token de prescritor via API da Memed.
-2.  **Carregamento MdHub**: O frontend carrega o script `https://integrations.memed.com.br/sinapse-prescricao/app.js` injetando o `data-token` dinamicamente.
-3.  **Abertura do Módulo**: Ao clicar em "Aprovar", o sistema pré-preenche os dados do paciente e medicamentos e abre o formulário da Memed via `MdHub.command.send`.
-4.  **Captura de Evento**: O sistema escuta o evento `prescription:completed` disparado pelo widget da Memed após a assinatura.
-5.  **Sincronização**: Ao capturar o evento, o frontend envia o link da receita para o backend via `salvarReceitaMemed`, que vincula ao atendimento e atualiza o status para `APROVADO`.
+1.  **Token Real do Prescritor**: Implementado no backend via `gerarTokenPrescritor()`. A rota `obterTokenMemed` garante que o frontend receba um token válido.
+2.  **Frontend com Token Dinâmico**: O hook `useMemed` consome o token e o injeta via `script.dataset.token = token`.
+3.  **Script MdHub Correto**: Utilizando o CDN oficial: `https://cdn.memed.com.br/widget/mdhub.js`.
+4.  **Domínio Liberado (CRÍTICO)**: Você **DEVE** autorizar o domínio do seu app (ex: `app.doctorprescreve.com.br`) no painel da Memed. Sem isso, o widget não carrega.
+5.  **Captura de Evento `prescription:completed`**: Implementado via `MdHub.event.add("prescription:completed", ...)`. Este é o coração da integração.
+6.  **Salvamento no Backend**: Rota `salvarReceitaMemed` (POST) vincula o link da receita ao atendimento e marca como `APROVADO`.
+7.  **Garantia de `atendimentoId`**: O ID é amarrado globalmente em `window.atendimentoAtual` antes de abrir o widget, evitando perda de vínculo.
+
+## 🚀 Fluxo de Funcionamento
+
+- **Médico** clica em "Aprovar & Emitir Receita".
+- **Sistema** salva o prontuário e abre o widget da Memed com dados pré-preenchidos.
+- **Médico** finaliza e assina a prescrição na interface da Memed.
+- **Widget** dispara o evento `prescription:completed`.
+- **Sistema** captura o link da receita, envia para o backend e finaliza o atendimento.
 
 ## ⚙️ Variáveis de Ambiente (.env)
 
@@ -30,22 +40,7 @@ MEMED_PRESCRITOR_TELEFONE=11968123900
 MEMED_PRESCRITOR_DATA_NASC=1988-02-09
 ```
 
-## ⚠️ Checklist de Produção
-
-1.  **Domínio Liberado**: Você **DEVE** solicitar à Memed a liberação do domínio onde o sistema está hospedado (ex: `app.doctorprescreve.com.br`). Sem isso, o widget não carregará.
-2.  **HTTPS**: A integração só funciona em ambientes seguros (HTTPS).
-3.  **Chaves de Produção**: Certifique-se de usar as chaves de produção fornecidas pela Memed.
-
-## 🛠️ Comandos de Teste
-
-Testar geração de token no backend:
+## 🧪 Teste de Conexão (Backend)
 ```bash
 node -e "require('./memed').testarConexao().then(console.log)"
 ```
-
-## 📂 Arquivos Modificados
-
-- `memed.js`: Lógica de autenticação e cache de tokens.
-- `dashboard-medico/server/routers.ts`: Novos endpoints `obterTokenMemed` e `salvarReceitaMemed`.
-- `dashboard-medico/client/src/hooks/useMemed.ts`: Hook principal de integração e captura de eventos.
-- `dashboard-medico/client/src/pages/Atendimento.tsx`: Interface de atendimento integrada.

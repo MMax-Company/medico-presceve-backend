@@ -35,12 +35,12 @@ export function useMemed(atendimentoId?: string) {
       existingScript.remove();
     }
 
-    // Criar e injetar script com token como data attribute
+    // Criar e injetar script com token como data attribute (Ponto 2 e 3)
     const script = document.createElement('script');
     script.id = 'mdhub-script';
-    script.src = 'https://integrations.memed.com.br/sinapse-prescricao/app.js';
+    script.src = 'https://cdn.memed.com.br/widget/mdhub.js';
     script.async = true;
-    script.setAttribute('data-token', tokenQuery.data.token);
+    script.dataset.token = tokenQuery.data.token;
     script.setAttribute('data-environment', 'production');
 
     script.onload = () => {
@@ -90,7 +90,7 @@ export function useMemed(atendimentoId?: string) {
 
     console.log('🎧 Registrando listeners de eventos da Memed...');
 
-    // Evento: Prescrição foi finalizada e assinada
+    // Evento: Prescrição foi finalizada e assinada (Ponto 5)
     MdHub.event.add('prescription:completed', async (data: any) => {
       console.log('✅ Evento prescription:completed capturado:', data);
 
@@ -102,11 +102,14 @@ export function useMemed(atendimentoId?: string) {
       
       const receitaId = data?.prescription?.id || data?.id;
 
-      // Salvar receita no backend se atendimentoId estiver disponível
-      if (atendimentoId && receitaUrl) {
+      // Garantir atendimentoId (Ponto 7)
+      const idParaSalvar = atendimentoId || (window as any).atendimentoAtual;
+
+      // Salvar receita no backend (Ponto 6)
+      if (idParaSalvar && receitaUrl) {
         try {
           await salvarReceitaMutation.mutateAsync({
-            atendimentoId,
+            atendimentoId: idParaSalvar,
             receitaUrl,
             receitaId,
           });
@@ -168,6 +171,11 @@ export function useMemed(atendimentoId?: string) {
 
     console.log('📝 Abrindo módulo de prescrição da Memed...');
     setIsOpeningModal(true);
+
+    // Garantir atendimentoId global (Ponto 7)
+    if (atendimentoId) {
+      (window as any).atendimentoAtual = atendimentoId;
+    }
 
     // Preparar dados para o MdHub
     const payload = {
