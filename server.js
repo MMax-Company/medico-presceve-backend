@@ -791,6 +791,989 @@ app.get('/api/estatisticas', auth, async (req, res) => {
 })
 
 // ========================
+//  PAINEL MEDICO
+// ========================
+app.get('/painel-medico', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Prescreve - Painel Médico Premium</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f8fafc;
+      min-height: 100vh;
+      color: #1e293b;
+    }
+
+    /* Login Container */
+    .login-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    }
+
+    .login-card {
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 32px;
+      padding: 48px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      animation: fadeInUp 0.6s ease;
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .login-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+
+    .login-icon i {
+      font-size: 40px;
+      color: white;
+    }
+
+    .login-card h2 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .login-card p {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .input-group {
+      margin-bottom: 24px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 16px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .login-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4);
+    }
+
+    /* Dashboard Container */
+    .dashboard-container {
+      display: none;
+      padding: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    /* Header Premium */
+    .premium-header {
+      background: white;
+      border-radius: 24px;
+      padding: 24px 32px;
+      margin-bottom: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      border: 1px solid #f1f5f9;
+    }
+
+    .logo-area h1 {
+      font-size: 24px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-area p {
+      color: #64748b;
+      font-size: 13px;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    .logout-btn {
+      background: #fee2e2;
+      color: #ef4444;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logout-btn:hover {
+      background: #fecaca;
+      transform: translateY(-2px);
+    }
+
+    /* Stats Grid Premium */
+    .stats-premium {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card-premium {
+      background: white;
+      border-radius: 24px;
+      padding: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      border: 1px solid #f1f5f9;
+    }
+
+    .stat-card-premium:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-info h3 {
+      font-size: 32px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .stat-info p {
+      color: #64748b;
+      font-size: 14px;
+      margin-top: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-icon {
+      width: 64px;
+      height: 64px;
+      background: #f1f5f9;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stat-icon i {
+      font-size: 28px;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Suporte Section */
+    .suporte-section {
+      background: white;
+      border-radius: 24px;
+      padding: 28px;
+      margin-bottom: 32px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      border: 1px solid #f1f5f9;
+    }
+
+    .suporte-section h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #0f172a;
+    }
+
+    #suportesPendentes {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 20px;
+    }
+
+    .suporte-card {
+      background: #f8fafc;
+      border-radius: 20px;
+      padding: 20px;
+      border-left: 6px solid #f59e0b;
+      transition: all 0.3s ease;
+    }
+
+    .suporte-card:hover {
+      transform: translateX(5px);
+      background: #f1f5f9;
+    }
+
+    .suporte-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .suporte-nome { font-weight: 700; color: #1e293b; }
+    .suporte-telefone { font-size: 13px; color: #64748b; background: #e2e8f0; padding: 4px 10px; border-radius: 8px; }
+    .suporte-mensagem { background: white; padding: 12px; border-radius: 12px; margin: 12px 0; font-size: 14px; line-height: 1.5; color: #475569; border: 1px solid #e2e8f0; }
+    .suporte-tempo { font-size: 12px; color: #94a3b8; font-weight: 500; }
+
+    /* Columns Layout */
+    .columns-container {
+      display: flex;
+      gap: 24px;
+      overflow-x: auto;
+      padding-bottom: 20px;
+    }
+
+    .column {
+      flex: 1;
+      min-width: 380px;
+      background: #f1f5f9;
+      border-radius: 28px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px 10px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .column-header h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .badge-count {
+      background: #cbd5e1;
+      color: #475569;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* Patient Cards */
+    .patient-card-premium {
+      background: white;
+      border-radius: 20px;
+      padding: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      border: 1px solid transparent;
+    }
+
+    .patient-card-premium:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 20px -6px rgba(0, 0, 0, 0.1);
+      border-color: #e2e8f0;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+
+    .patient-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .patient-id {
+      font-size: 11px;
+      color: #94a3b8;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .status-badge {
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .status-fila { background: #fef3c7; color: #92400e; }
+    .status-atendimento { background: #dbeafe; color: #1e40af; }
+    .status-decisao { background: #dcfce7; color: #166534; }
+
+    .patient-info {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .info-item i {
+      width: 18px;
+      color: #3b82f6;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #f1f5f9;
+    }
+
+    .btn-premium {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-success { background: #10b981; color: white; }
+    .btn-success:hover { background: #059669; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-warning:hover { background: #d97706; }
+
+    /* Modal Premium */
+    .modal-premium {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 32px;
+      max-width: 650px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+
+    @keyframes modalSlideUp {
+      from { opacity: 0; transform: translateY(40px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .modal-header {
+      padding: 24px 32px;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 10;
+    }
+
+    .modal-header h3 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .close-modal {
+      background: #f1f5f9;
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #64748b;
+      transition: all 0.2s;
+    }
+
+    .close-modal:hover { background: #e2e8f0; color: #0f172a; }
+
+    .modal-body { padding: 32px; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+
+    .form-group { margin-bottom: 24px; }
+    .form-group.full { grid-column: span 2; }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: 600;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #f1f5f9;
+      border-radius: 16px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      background: #f8fafc;
+      transition: all 0.3s;
+    }
+
+    .form-group input:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      background: white;
+    }
+
+    .form-group textarea { min-height: 120px; resize: vertical; }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #94a3b8;
+    }
+
+    .empty-state i { font-size: 48px; margin-bottom: 16px; display: block; }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 1024px) {
+      .columns-container { flex-direction: column; }
+      .column { min-width: 100%; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-group.full { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="login-wrapper">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-icon">
+        <i class="fas fa-stethoscope"></i>
+      </div>
+      <h2>Doctor Prescreve</h2>
+      <p>Painel de Controle Médico</p>
+    </div>
+    <div class="input-group">
+      <label><i class="fas fa-lock"></i> Senha de Acesso</label>
+      <input type="password" id="senha" placeholder="Digite sua senha" onkeypress="if(event.key==='Enter') fazerLogin()">
+    </div>
+    <button class="login-btn" onclick="fazerLogin()">
+      <i class="fas fa-sign-in-alt"></i> Entrar no Painel
+    </button>
+    <div id="erroMsg" style="color: #ef4444; text-align: center; margin-top: 16px; display: none; font-size: 14px; font-weight: 600;">
+      ❌ Senha incorreta!
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard-container">
+  <div class="premium-header">
+    <div class="logo-area">
+      <h1><i class="fas fa-shield-halved"></i> Doctor Prescreve</h1>
+      <p>Sistema de Telemedicina & Gestão Clínica</p>
+    </div>
+    <button class="logout-btn" onclick="logout()">
+      <i class="fas fa-power-off"></i> Sair do Sistema
+    </button>
+  </div>
+
+  <div class="stats-premium" id="stats">
+    <!-- Stats cards loaded via JS -->
+  </div>
+
+  <div class="suporte-section">
+    <h3><i class="fas fa-headset" style="color: #f59e0b;"></i> CHAMADOS DE SUPORTE</h3>
+    <div id="suportesPendentes">Carregando chamados...</div>
+  </div>
+
+  <div class="columns-container">
+    <div class="column">
+      <div class="column-header">
+        <h3><i class="fas fa-clock"></i> Fila de Espera</h3>
+        <span class="badge-count" id="countFila">0</span>
+      </div>
+      <div id="filaColuna"></div>
+    </div>
+    <div class="column">
+      <div class="column-header">
+        <h3><i class="fas fa-user-md"></i> Em Atendimento</h3>
+        <span class="badge-count" id="countAtendimento">0</span>
+      </div>
+      <div id="atendimentoColuna"></div>
+    </div>
+    <div class="column">
+      <div class="column-header">
+        <h3><i class="fas fa-check-double"></i> Pronto para Decisão</h3>
+        <span class="badge-count" id="countDecisao">0</span>
+      </div>
+      <div id="decisaoColuna"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-premium">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3><i class="fas fa-file-medical"></i> Avaliação Médica</h3>
+      <button class="close-modal" onclick="fecharModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="modalContent"></div>
+      <div id="modalActions" style="margin-top: 32px; display: flex; gap: 16px;">
+         <!-- Actions added dynamically -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let token = localStorage.getItem('token');
+  let atendimentosData = [];
+
+  async function fazerLogin() {
+    const senha = document.getElementById('senha').value;
+    const erroMsg = document.getElementById('erroMsg');
+    try {
+      const res = await fetch(window.location.origin + '/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senha })
+      });
+      const data = await res.json();
+      if (data.token) {
+        token = data.token;
+        localStorage.setItem('token', token);
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        carregarDados();
+        erroMsg.style.display = 'none';
+      } else {
+        erroMsg.style.display = 'block';
+      }
+    } catch(e) {
+      erroMsg.style.display = 'block';
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    token = null;
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('senha').value = '';
+  }
+
+  async function carregarDados() {
+    if (!token) return;
+    try {
+      const res = await fetch(window.location.origin + '/api/atendimentos', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      atendimentosData = await res.json();
+      
+      const statsRes = await fetch(window.location.origin + '/api/estatisticas', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const stats = await statsRes.json();
+      
+      atualizarEstatisticas(stats);
+      renderizarColunas();
+      carregarSuportes();
+    } catch(e) {
+      console.error('Erro ao carregar:', e);
+    }
+  }
+
+  function atualizarEstatisticas(stats) {
+    const statsHtml = `
+      <div class="stat-card-premium">
+        <div class="stat-info"><h3>${stats.total || 0}</h3><p>Total Geral</p></div>
+        <div class="stat-icon"><i class="fas fa-folder-open"></i></div>
+      </div>
+      <div class="stat-card-premium">
+        <div class="stat-info"><h3>${stats.naFila || 0}</h3><p>Aguardando</p></div>
+        <div class="stat-icon"><i class="fas fa-hourglass-half"></i></div>
+      </div>
+      <div class="stat-card-premium">
+        <div class="stat-info"><h3>${stats.aprovados || 0}</h3><p>Aprovados</p></div>
+        <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+      </div>
+      <div class="stat-card-premium">
+        <div class="stat-info"><h3>${stats.recusados || 0}</h3><p>Recusados</p></div>
+        <div class="stat-icon"><i class="fas fa-times-circle"></i></div>
+      </div>
+    `;
+    document.getElementById('stats').innerHTML = statsHtml;
+  }
+
+  async function carregarSuportes() {
+    try {
+      const res = await fetch('/api/suporte/pendentes');
+      const suportes = await res.json();
+      let html = '';
+      
+      if (suportes.length === 0) {
+        html = '<div class="empty-state" style="grid-column: 1/-1;"><i class="fas fa-check-circle"></i><p>Nenhum chamado pendente</p></div>';
+      } else {
+        suportes.forEach(s => {
+          html += `
+            <div class="suporte-card">
+              <div class="suporte-header">
+                <span class="suporte-nome">👤 ${s.nome || 'Paciente'}</span>
+                <span class="suporte-telefone">${s.telefone}</span>
+              </div>
+              <div class="suporte-mensagem">${s.mensagem || 'Aguardando atendimento'}</div>
+              <div class="suporte-tempo"><i class="far fa-clock"></i> Há ${formatarTempo(s.criado_em)}</div>
+              <div style="margin-top: 15px;">
+                <button class="btn-premium btn-warning" onclick="atenderSuporte('${s.id}', '${s.telefone}', '${s.nome || 'Paciente'}')">
+                  <i class="fas fa-reply"></i> Atender Chamado
+                </button>
+              </div>
+            </div>
+          `;
+        });
+      }
+      document.getElementById('suportesPendentes').innerHTML = html;
+    } catch(e) {
+      console.error(e);
+    }
+  }
+
+  function formatarTempo(dataCriacao) {
+    if (!dataCriacao) return 'agora';
+    const criado = new Date(dataCriacao);
+    const agora = new Date();
+    const diffMin = Math.floor((agora - criado) / 60000);
+    if (diffMin < 1) return 'agora';
+    if (diffMin < 60) return diffMin + ' min';
+    return Math.floor(diffMin / 60) + 'h';
+  }
+
+  async function atenderSuporte(id, telefone, nome) {
+    if (!confirm('Atender ' + nome + '? O paciente será notificado.')) return;
+    try {
+      await fetch('/api/suporte/atender/' + id, { method: 'POST' });
+      await fetch('/api/enviar-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telefone: telefone,
+          mensagem: '👨‍⚕️ *Doctor Prescreve*\\n\\nOlá! Um atendente já está analisando seu caso e falará com você em breve.'
+        })
+      });
+      alert('✅ Paciente notificado!');
+      carregarSuportes();
+    } catch(e) {
+      alert('Erro: ' + e.message);
+    }
+  }
+
+  function renderizarColunas() {
+    const fila = atendimentosData.filter(a => a.status === 'FILA' && a.pagamento);
+    const emAtendimento = atendimentosData.filter(a => a.status === 'EM_ATENDIMENTO');
+    const prontoDecisao = atendimentosData.filter(a => a.status === 'PRONTO_PARA_DECISAO');
+
+    document.getElementById('countFila').innerText = fila.length;
+    document.getElementById('countAtendimento').innerText = emAtendimento.length;
+    document.getElementById('countDecisao').innerText = prontoDecisao.length;
+
+    renderizarColuna('filaColuna', fila, 'fila');
+    renderizarColuna('atendimentoColuna', emAtendimento, 'atendimento');
+    renderizarColuna('decisaoColuna', prontoDecisao, 'decisao');
+  }
+
+  function renderizarColuna(elementId, lista, tipo) {
+    const container = document.getElementById(elementId);
+    if (lista.length === 0) {
+      container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>Vazio</p></div>';
+      return;
+    }
+
+    let html = '';
+    lista.forEach(a => {
+      let statusClass = 'status-' + tipo;
+      let statusText = tipo === 'fila' ? '⏳ Na Fila' : tipo === 'atendimento' ? '👨‍⚕️ Atendendo' : '📝 Decisão';
+      
+      html += `
+        <div class="patient-card-premium">
+          <div class="card-header">
+            <div>
+              <div class="patient-name">${a.paciente_nome || 'Nome não informado'}</div>
+              <div class="patient-id">ID: ${a.id.substring(0, 12)}...</div>
+            </div>
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </div>
+          <div class="patient-info">
+            <div class="info-item"><i class="fas fa-phone"></i> ${a.paciente_telefone || 'Não informado'}</div>
+            <div class="info-item"><i class="fas fa-notes-medical"></i> ${a.doencas || 'Não informada'}</div>
+            <div class="info-item"><i class="fas fa-calendar-alt"></i> ${new Date(a.criado_em).toLocaleDateString()}</div>
+          </div>
+          <div class="card-actions">
+      `;
+
+      if (tipo === 'fila') {
+        html += `<button class="btn-premium btn-warning" onclick="pegarProximo()"><i class="fas fa-hand-holding-medical"></i> Pegar Próximo</button>`;
+      } else if (tipo === 'atendimento') {
+        html += `<button class="btn-premium btn-primary" onclick="abrirProntuario('${a.id}')"><i class="fas fa-file-alt"></i> Prontuário</button>`;
+      } else {
+        html += `
+          <button class="btn-premium btn-success" onclick="verDecisao('${a.id}')"><i class="fas fa-check"></i> Aprovar</button>
+          <button class="btn-premium btn-danger" onclick="recusarConsulta('${a.id}')"><i class="fas fa-times"></i> Recusar</button>
+        `;
+      }
+
+      html += `</div></div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  async function pegarProximo() {
+    try {
+      const res = await fetch('/api/fila/pegar-proximo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ medicoId: 'medico_' + Date.now() })
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        window.location.href = '/prontuario/' + data.atendimento.id;
+      } else {
+        alert('Fila vazia ou caso já em atendimento');
+        carregarDados();
+      }
+    } catch(e) { alert('Erro: ' + e.message); }
+  }
+
+  function abrirProntuario(id) {
+    window.location.href = '/prontuario/' + id;
+  }
+
+  async function verDecisao(id) {
+    try {
+      const res = await fetch(window.location.origin + '/api/atendimento/' + id, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const a = await res.json();
+
+      const modal = document.getElementById('modal');
+      const modalContent = document.getElementById('modalContent');
+      const modalActions = document.getElementById('modalActions');
+      
+      modalContent.innerHTML = `
+        <div class="form-grid">
+          <div class="form-group">
+            <label><i class="fas fa-user"></i> Paciente</label>
+            <input type="text" value="${a.paciente_nome || ''}" disabled>
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-phone"></i> Telefone</label>
+            <input type="text" value="${a.paciente_telefone || ''}" disabled>
+          </div>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-notes-medical"></i> Doença/Queixa</label>
+          <textarea disabled>${a.doencas || 'Não informado'}</textarea>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-capsules"></i> Medicamento Recomendado</label>
+          <input type="text" id="medicamento" value="${a.medicacao_em_uso || ''}" placeholder="Ex: Losartana 50mg">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-prescription-bottle"></i> Posologia</label>
+          <textarea id="posologia" placeholder="Ex: 1 comprimido ao dia, pela manhã"></textarea>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-stethoscope"></i> Conduta Médica (Orientação)</label>
+          <textarea id="conduta" placeholder="Orientação que o paciente receberá..."></textarea>
+        </div>
+      `;
+
+      modalActions.innerHTML = `
+        <button class="btn-premium btn-success" style="padding: 14px;" onclick="aprovarConsulta('${a.id}')">
+          <i class="fas fa-check-circle"></i> CONFIRMAR E ENVIAR RECEITA
+        </button>
+      `;
+      
+      modal.style.display = 'flex';
+    } catch(e) { alert('Erro ao carregar prontuário'); }
+  }
+
+  async function aprovarConsulta(id) {
+    const medicamento = document.getElementById('medicamento')?.value || '';
+    const posologia = document.getElementById('posologia')?.value || '';
+    const conduta = document.getElementById('conduta')?.value || '';
+    
+    if (!confirm('Confirmar aprovação? O paciente receberá a receita.')) return;
+    
+    try {
+      const res = await fetch(window.location.origin + '/api/decisao/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          decisao: 'APROVAR',
+          orientacoes: conduta,
+          medicamento: medicamento,
+          posologia: posologia
+        })
+      });
+      
+      if (res.ok) {
+        alert('✅ Consulta aprovada com sucesso!');
+        fecharModal();
+        carregarDados();
+      } else { alert('Erro ao aprovar consulta'); }
+    } catch(e) { alert('Erro ao aprovar consulta'); }
+  }
+
+  async function recusarConsulta(id) {
+    const motivo = prompt('Motivo da recusa (opcional):');
+    if (!confirm('❌ Tem certeza que deseja recusar este atendimento?')) return;
+    
+    try {
+      const res = await fetch(window.location.origin + '/api/decisao/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ decisao: 'RECUSAR', orientacoes: motivo || 'Recusado pelo médico' })
+      });
+      
+      if (res.ok) {
+        alert('❌ Consulta recusada');
+        carregarDados();
+      } else { alert('Erro ao recusar consulta'); }
+    } catch(e) { alert('Erro ao recusar consulta'); }
+  }
+
+  function fecharModal() {
+    document.getElementById('modal').style.display = 'none';
+  }
+
+  if (token) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    carregarDados();
+  }
+
+  setInterval(() => {
+    if (document.getElementById('dashboard').style.display === 'block') {
+      carregarDados();
+    }
+  }, 30000);
+</script>
+
+</body>
+</html>
+  `)
+})
+
+// ========================
 // 👨‍⚕️ DECISÃO MÉDICA (Pontos 1, 4, 5, 6, 7, 9)
 // ========================
 app.post('/api/decisao/:id', auth, async (req, res) => {
