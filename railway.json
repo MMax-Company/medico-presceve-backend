@@ -5,7 +5,7 @@
   },
   "deploy": {
     "numReplicas": 1,
-    "startCommand": "cd dashboard-medico && pnpm install && pnpm build && pnpm start",
+    "startCommand": "sh -c 'cd dashboard-medico && pnpm install && pnpm build && pnpm start'",
     "restartPolicyMaxRetries": 5
   }
 }
