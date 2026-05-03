@@ -3,7 +3,7 @@ const axios = require('axios');
 // ========================
 // 🔐 CONFIGURAÇÕES MEMED (VIA ENV)
 // ========================
-const MEMED_API_URL = process.env.MEMED_API_URL || 'https://api.memed.com.br';
+const MEMED_API_URL = process.env.MEMED_API_URL || 'https://integrations.api.memed.com.br';
 const API_KEY = process.env.MEMED_API_KEY;
 const SECRET_KEY = process.env.MEMED_SECRET_KEY;
 
