@@ -131,10 +131,12 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https://*"],
       connectSrc: ["'self'", "https://*"],
+      workerSrc: ["'self'", "blob:"],
     },
   },
 }))
@@ -1370,13 +1372,15 @@ app.get('/painel-medico', (req, res) => {
       <h2>Doctor Prescreve</h2>
       <p>Painel de Controle Médico</p>
     </div>
-    <div class="input-group">
-      <label><i class="fas fa-lock"></i> Senha de Acesso</label>
-      <input type="password" id="senha" placeholder="Digite sua senha" onkeypress="if(event.key==='Enter') fazerLogin()">
-    </div>
-    <button class="login-btn" onclick="fazerLogin()">
-      <i class="fas fa-sign-in-alt"></i> Entrar no Painel
-    </button>
+    <form id="loginForm">
+      <div class="input-group">
+        <label><i class="fas fa-lock"></i> Senha de Acesso</label>
+        <input type="password" id="senha" placeholder="Digite sua senha">
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">
+        <i class="fas fa-sign-in-alt"></i> Entrar no Painel
+      </button>
+    </form>
     <div id="erroMsg" style="color: #ef4444; text-align: center; margin-top: 16px; display: none; font-size: 14px; font-weight: 600;">
       ❌ Senha incorreta!
     </div>
@@ -1390,7 +1394,7 @@ app.get('/painel-medico', (req, res) => {
       <h1><i class="fas fa-shield-halved"></i> Doctor Prescreve</h1>
       <p>Sistema de Telemedicina & Gestão Clínica</p>
     </div>
-    <button class="logout-btn" onclick="logout()">
+    <button class="logout-btn" id="logoutBtn">
       <i class="fas fa-power-off"></i> Sair do Sistema
     </button>
   </div>
@@ -1434,7 +1438,7 @@ app.get('/painel-medico', (req, res) => {
   <div class="modal-content">
     <div class="modal-header">
       <h3><i class="fas fa-file-medical"></i> Avaliação Médica</h3>
-      <button class="close-modal" onclick="fecharModal()">&times;</button>
+      <button class="close-modal" id="closeModalBtn">&times;</button>
     </div>
     <div class="modal-body">
       <div id="modalContent"></div>
@@ -1448,6 +1452,33 @@ app.get('/painel-medico', (req, res) => {
 <script>
   let token = localStorage.getItem('token');
   let atendimentosData = [];
+
+  // Initialize Event Listeners
+  document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+      loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        fazerLogin();
+      });
+    }
+
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', logout);
+    }
+
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    if (closeModalBtn) {
+      closeModalBtn.addEventListener('click', fecharModal);
+    }
+
+    if (token) {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      carregarDados();
+    }
+  });
 
   async function fazerLogin() {
     const senha = document.getElementById('senha').value;
@@ -1544,7 +1575,7 @@ app.get('/painel-medico', (req, res) => {
               <div class="suporte-mensagem">\${s.mensagem || 'Aguardando atendimento'}</div>
               <div class="suporte-tempo"><i class="far fa-clock"></i> Há \${formatarTempo(s.criado_em)}</div>
               <div style="margin-top: 15px;">
-                <button class="btn-premium btn-warning" onclick="atenderSuporte('\${s.id}', '\${s.telefone}', '\${s.nome || 'Paciente'}')">
+                <button class="btn-premium btn-warning btn-atender-suporte" data-id="\${s.id}" data-tel="\${s.telefone}" data-nome="\${s.nome || 'Paciente'}">
                   <i class="fas fa-reply"></i> Atender Chamado
                 </button>
               </div>
@@ -1553,6 +1584,13 @@ app.get('/painel-medico', (req, res) => {
         });
       }
       document.getElementById('suportesPendentes').innerHTML = html;
+      
+      // Attach events to support buttons
+      document.querySelectorAll('.btn-atender-suporte').forEach(btn => {
+        btn.addEventListener('click', function() {
+          atenderSuporte(this.dataset.id, this.dataset.tel, this.dataset.nome);
+        });
+      });
     } catch(e) {
       console.error(e);
     }
@@ -1631,19 +1669,25 @@ app.get('/painel-medico', (req, res) => {
       \`;
 
       if (tipo === 'fila') {
-        html += \`<button class="btn-premium btn-warning" onclick="pegarProximo()"><i class="fas fa-hand-holding-medical"></i> Pegar Próximo</button>\`;
+        html += \`<button class="btn-premium btn-warning btn-pegar-proximo"><i class="fas fa-hand-holding-medical"></i> Pegar Próximo</button>\`;
       } else if (tipo === 'atendimento') {
-        html += \`<button class="btn-premium btn-primary" onclick="abrirProntuario('\${a.id}')"><i class="fas fa-file-alt"></i> Prontuário</button>\`;
+        html += \`<button class="btn-premium btn-primary btn-abrir-prontuario" data-id="\${a.id}"><i class="fas fa-file-alt"></i> Prontuário</button>\`;
       } else {
         html += \`
-          <button class="btn-premium btn-success" onclick="verDecisao('\${a.id}')"><i class="fas fa-check"></i> Aprovar</button>
-          <button class="btn-premium btn-danger" onclick="recusarConsulta('\${a.id}')"><i class="fas fa-times"></i> Recusar</button>
+          <button class="btn-premium btn-success btn-ver-decisao" data-id="\${a.id}"><i class="fas fa-check"></i> Aprovar</button>
+          <button class="btn-premium btn-danger btn-recusar-consulta" data-id="\${a.id}"><i class="fas fa-times"></i> Recusar</button>
         \`;
       }
 
       html += \`</div></div>\`;
     });
     container.innerHTML = html;
+    
+    // Attach events to dynamic buttons
+    container.querySelectorAll('.btn-pegar-proximo').forEach(btn => btn.addEventListener('click', pegarProximo));
+    container.querySelectorAll('.btn-abrir-prontuario').forEach(btn => btn.addEventListener('click', function() { abrirProntuario(this.dataset.id); }));
+    container.querySelectorAll('.btn-ver-decisao').forEach(btn => btn.addEventListener('click', function() { verDecisao(this.dataset.id); }));
+    container.querySelectorAll('.btn-recusar-consulta').forEach(btn => btn.addEventListener('click', function() { recusarConsulta(this.dataset.id); }));
   }
 
   async function pegarProximo() {
@@ -1708,10 +1752,14 @@ app.get('/painel-medico', (req, res) => {
       \`;
 
       modalActions.innerHTML = \`
-        <button class="btn-premium btn-success" style="padding: 14px;" onclick="aprovarConsulta('\${a.id}')">
+        <button class="btn-premium btn-success" id="confirmAprovarBtn" style="padding: 14px;">
           <i class="fas fa-check-circle"></i> CONFIRMAR E ENVIAR RECEITA
         </button>
       \`;
+      
+      document.getElementById('confirmAprovarBtn').addEventListener('click', () => {
+        aprovarConsulta(a.id);
+      });
       
       modal.style.display = 'flex';
     } catch(e) { alert('Erro ao carregar prontuário'); }
@@ -1766,12 +1814,6 @@ app.get('/painel-medico', (req, res) => {
     document.getElementById('modal').style.display = 'none';
   }
 
-  if (token) {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
-    carregarDados();
-  }
-
   setInterval(() => {
     if (document.getElementById('dashboard').style.display === 'block') {
       carregarDados();
@@ -1783,6 +1825,7 @@ app.get('/painel-medico', (req, res) => {
 </html>
   `)
 })
+
 
 
 // ========================
