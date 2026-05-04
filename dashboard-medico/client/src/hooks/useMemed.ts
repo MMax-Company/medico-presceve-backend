@@ -120,6 +120,17 @@ export function useMemed(atendimentoId?: string) {
       }
     });
 
+    // Requisito Obrigatório 3: Evento prescricaoImpressa
+    MdHub.event.add('prescricaoImpressa', (data: any) => {
+      console.log('✅ Evento prescricaoImpressa capturado:', data);
+    });
+
+    // Requisito Obrigatório 3: Evento prescricaoExcluida
+    MdHub.event.add('prescricaoExcluida', (data: any) => {
+      console.warn('⚠️ Evento prescricaoExcluida capturado:', data);
+      // Aqui você pode adicionar lógica para invalidar a receita no seu banco
+    });
+
     // Evento: Erro ao processar prescrição
     MdHub.event.add('prescription:error', (error: any) => {
       console.error('❌ Erro na Memed:', error);
@@ -202,6 +213,9 @@ export function useMemed(atendimentoId?: string) {
         console.warn('⚠️ MdHub não está totalmente pronto, tentando inicializar...');
       }
 
+      // Requisito Obrigatório 2: Configurando o Paciente via setPaciente
+      MdHub.command.send('plataforma.prescricao', 'setPaciente', payload.paciente);
+
       // Enviar comando para abrir o módulo
       MdHub.command.send(
         'plataforma.prescricao',
@@ -235,6 +249,8 @@ export function useMemed(atendimentoId?: string) {
     if (!MdHub?.event?.remove) return;
 
     MdHub.event.remove('prescription:completed');
+    MdHub.event.remove('prescricaoImpressa');
+    MdHub.event.remove('prescricaoExcluida');
     MdHub.event.remove('prescription:error');
     MdHub.event.remove('modal:closed');
 
