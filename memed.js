@@ -297,11 +297,39 @@ async function obterTokenParaFrontend() {
   return token;
 }
 
+/**
+ * Exclui uma prescrição na Memed via API (Requisito para integração Tasy/MV)
+ * @param {string} externalId ID da prescrição na Memed
+ */
+async function excluirPrescricaoMemed(externalId) {
+  if (!API_KEY || !SECRET_KEY) return false;
+
+  try {
+    console.log(`🗑️ Excluindo prescrição ${externalId} na Memed...`);
+    const response = await axios.delete(
+      `${MEMED_API_URL}/sinapse-prescricao/prescricoes/${externalId}?api-key=${API_KEY}&secret-key=${SECRET_KEY}`,
+      {
+        headers: {
+          'Accept': 'application/vnd.api+json',
+          'User-Agent': 'DoctorPrescreve/1.0'
+        },
+        timeout: 15000
+      }
+    );
+
+    return response.status === 200 || response.status === 204;
+  } catch (error) {
+    console.error('❌ Erro ao excluir prescrição na Memed:', error.message);
+    return false;
+  }
+}
+
 module.exports = {
   gerarTokenPrescritor,
   testarConexao,
   renovarToken,
   verificarStatusConta,
   validarChaves,
+  excluirPrescricaoMemed,
   obterTokenParaFrontend
 };

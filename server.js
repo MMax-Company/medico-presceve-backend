@@ -2409,8 +2409,13 @@ app.post('/api/receita/:id/cancelar', auth, async (req, res) => {
     const receita = await db.buscarReceitaPorId(req.params.id)
     if (!receita) return res.status(404).json({ error: 'Receita não encontrada' })
     
-    const motivo = req.body.motivo || 'Cancelada pelo médico'
+     const motivo = req.body.motivo || 'Cancelada pelo médico'
     await db.atualizarStatusReceita(req.params.id, 'CANCELADA', motivo)
+
+    // Sincronizar exclusão com a Memed (Requisito Tasy/MV)
+    if (receita.external_id) {
+      await memed.excluirPrescricaoMemed(receita.external_id);
+    }
 
     const at = await db.buscarAtendimentoPorId(receita.atendimentoId)
     if (at) {
