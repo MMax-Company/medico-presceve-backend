@@ -58,6 +58,13 @@ export function useMemed(atendimentoId?: string) {
 
           // Registrar listeners de eventos
           registrarEventosInterno();
+          
+          // Requisito melmedes.odt: Garantir que o módulo seja exibido se o autofocus falhar
+          try {
+            (window as any).MdHub.module.show('plataforma.prescricao');
+          } catch (e) {
+            console.warn('⚠️ Falha ao forçar exibição do módulo:', e);
+          }
         }
       }, 100);
 
@@ -209,6 +216,26 @@ export function useMemed(atendimentoId?: string) {
     };
 
     try {
+      // Requisito melmedes.odt: Se o script já estiver carregado, apenas mostrar o módulo
+      // para evitar duplicação de iframes e delays.
+      if (medhubInitialized.current && (window as any).MdHub) {
+        console.log('🔄 MdHub já inicializado, apenas exibindo e enviando dados...');
+        
+        // Requisito Obrigatório 2: Configurando o Paciente via setPaciente
+        MdHub.command.send('plataforma.prescricao', 'setPaciente', payload.paciente);
+
+        // Enviar comando para abrir o módulo com os dados
+        MdHub.command.send(
+          'plataforma.prescricao',
+          'openPrescriptionForm',
+          payload
+        );
+        
+        // Forçar exibição caso esteja oculto
+        MdHub.module.show('plataforma.prescricao');
+        return;
+      }
+
       // Validar se o MdHub está realmente pronto
       if (!(window as any).MdHub?.is_ready) {
         console.warn('⚠️ MdHub não está totalmente pronto, tentando inicializar...');
