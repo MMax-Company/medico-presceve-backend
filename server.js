@@ -15,6 +15,9 @@ const QRCode = require('qrcode')
 // 🔌 IMPORTAR MÓDULO DE BANCO (PostgreSQL)
 // ========================
 const db = require('./db')
+const { createExpressMiddleware } = require('@trpc/server/adapters/express')
+const { appRouter } = require('./dashboard-medico/server/routers')
+const { createContext } = require('./dashboard-medico/server/_core/context')
 
 // ========================
 // 🚀 CONFIGURAÇÃO DO EXPRESS
@@ -131,12 +134,14 @@ const dashboardDistPath = path.join(__dirname, 'dashboard-medico', 'dist', 'publ
 console.log('🔍 Tentando servir dashboard de:', dashboardDistPath)
 if (fs.existsSync(dashboardDistPath)) {
   console.log('✅ Pasta dist encontrada!')
-  app.use(express.static(dashboardDistPath))
+  app.use("/painel-medico", express.static(dashboardDistPath))
 } else {
   console.log('❌ Pasta dist NÃO encontrada!')
 }
 
 app.use(express.json())
+
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
