@@ -128,7 +128,13 @@ app.use(cors())
 
 // PRIORIDADE MÁXIMA: Servir arquivos estáticos do dashboard
 const dashboardDistPath = path.join(__dirname, 'dashboard-medico', 'dist', 'public')
-app.use(express.static(dashboardDistPath))
+console.log('🔍 Tentando servir dashboard de:', dashboardDistPath)
+if (fs.existsSync(dashboardDistPath)) {
+  console.log('✅ Pasta dist encontrada!')
+  app.use(express.static(dashboardDistPath))
+} else {
+  console.log('❌ Pasta dist NÃO encontrada!')
+}
 
 app.use(express.json())
 app.use(helmet({
