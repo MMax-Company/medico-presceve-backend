@@ -2217,7 +2217,7 @@ app.post('/api/receita', auth, async (req, res) => {
     }
 
     const filePath = path.join(DB_DIR, `receita_${id}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(receitaCompleta, null, 2))
+    await db.salvarReceita(receitaCompleta)
 
     // Atualizar status para RECEITA_EMITIDA (Ponto 6)
     if (at && at.status === ESTADOS_FLUXO.APROVADO) {
@@ -2246,10 +2246,10 @@ app.post('/api/receita', auth, async (req, res) => {
 app.get('/api/receita/:id', auth, async (req, res) => {
   try {
     const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Receita não encontrada' })
+    const receita = await db.buscarReceitaPorId(req.params.id)
+    if (!receita) {
+      return res.status(404).json({ valido: false, mensagem: 'Receita não encontrada' })
     }
-    const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
     res.json(receita)
   } catch (e) {
     res.status(500).json({ error: 'Erro ao carregar receita' })
@@ -2393,21 +2393,10 @@ app.get('/api/receita/:id/validar', async (req, res) => {
 // Listar receitas do paciente
 app.get('/api/receitas/paciente/:atendimentoId', auth, async (req, res) => {
   try {
-    const files = fs.readdirSync(DB_DIR)
-    const receitasPaciente = []
-
-    for (const file of files) {
-      if (file.startsWith('receita_')) {
-        const receita = JSON.parse(fs.readFileSync(path.join(DB_DIR, file), 'utf8'))
-        if (receita.atendimentoId === req.params.atendimentoId) {
-          receitasPaciente.push(receita)
-        }
-      }
-    }
-
+    const receitasPaciente = await db.listarReceitasPorAtendimento(req.params.atendimentoId)
     res.json({
       total: receitasPaciente.length,
-      receitas: receitasPaciente.sort((a, b) => new Date(b.data_emissao) - new Date(a.data_emissao))
+      receitas: receitasPaciente
     })
   } catch (e) {
     res.status(500).json({ error: 'Erro ao listar receitas' })
@@ -2417,14 +2406,11 @@ app.get('/api/receitas/paciente/:atendimentoId', auth, async (req, res) => {
 // Cancelar receita
 app.post('/api/receita/:id/cancelar', auth, async (req, res) => {
   try {
-    const filePath = path.join(DB_DIR, `receita_${req.params.id}.json`)
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Receita não encontrada' })
-
-    const receita = JSON.parse(fs.readFileSync(filePath, 'utf8'))
-    receita.status = 'CANCELADA'
-    receita.cancelada_em = new Date().toISOString()
-    receita.motivo_cancelamento = req.body.motivo || 'Cancelada pelo médico'
-    fs.writeFileSync(filePath, JSON.stringify(receita, null, 2))
+    const receita = await db.buscarReceitaPorId(req.params.id)
+    if (!receita) return res.status(404).json({ error: 'Receita não encontrada' })
+    
+    const motivo = req.body.motivo || 'Cancelada pelo médico'
+    await db.atualizarStatusReceita(req.params.id, 'CANCELADA', motivo)
 
     const at = await db.buscarAtendimentoPorId(receita.atendimentoId)
     if (at) {
@@ -2441,12 +2427,10 @@ app.post('/api/receita/:id/cancelar', auth, async (req, res) => {
 // Renovar receita
 app.post('/api/receita/:id/renovar', auth, async (req, res) => {
   try {
-    const filePathAntigo = path.join(DB_DIR, `receita_${req.params.id}.json`)
-    if (!fs.existsSync(filePathAntigo)) return res.status(404).json({ error: 'Receita original não encontrada' })
-
-    const receitaAntiga = JSON.parse(fs.readFileSync(filePathAntigo, 'utf8'))
+    const receitaAntiga = await db.buscarReceitaPorId(req.params.id)
+    if (!receitaAntiga) return res.status(404).json({ error: 'Receita original não encontrada' })
+    
     const novoId = uuidv4()
-
     const novaReceita = {
       ...receitaAntiga,
       id: novoId,
@@ -2457,8 +2441,7 @@ app.post('/api/receita/:id/renovar', auth, async (req, res) => {
       assinatura_digital: crypto.createHash('sha256').update(novoId + process.env.JWT_SECRET + Date.now()).digest('hex'),
       status: 'ATIVA'
     }
-
-    fs.writeFileSync(path.join(DB_DIR, `receita_${novoId}.json`), JSON.stringify(novaReceita, null, 2))
+    await db.salvarReceita(novaReceita)
 
     const at = await db.buscarAtendimentoPorId(receitaAntiga.atendimentoId)
     if (at) {
@@ -2488,8 +2471,7 @@ app.post('/api/webhook/receita', auth, async (req, res) => {
       origem: 'MEMED',
       status: 'ATIVA'
     }
-
-    fs.writeFileSync(path.join(DB_DIR, `receita_${atendimentoId}.json`), JSON.stringify(receita, null, 2))
+    await db.salvarReceita(receita)
 
     const at = await db.buscarAtendimentoPorId(atendimentoId)
     if (at && at.paciente_telefone) {

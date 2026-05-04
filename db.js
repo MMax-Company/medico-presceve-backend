@@ -95,7 +95,119 @@ function initDB() {
     console.error('❌ Erro ao criar tabela fila_suporte:', err);
   });
 
+  // Criar tabela de receitas
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS receitas (
+      id VARCHAR(64) PRIMARY KEY,
+      atendimento_id VARCHAR(36) NOT NULL,
+      numero VARCHAR(50),
+      pdf_url TEXT,
+      medicamentos JSONB,
+      dados_completos JSONB,
+      status VARCHAR(20) DEFAULT 'ATIVA',
+      data_emissao TIMESTAMP DEFAULT NOW(),
+      data_validade TIMESTAMP,
+      cancelada_em TIMESTAMP,
+      motivo_cancelamento TEXT,
+      origem VARCHAR(20) DEFAULT 'SISTEMA'
+    )
+  `).then(() => {
+    console.log('✅ Tabela "receitas" criada/verificada com sucesso!');
+  }).catch(err => {
+    console.error('❌ Erro ao criar tabela receitas:', err);
+  });
+
   return pool;
+}
+
+// ========================
+// 💊 FUNÇÕES DE RECEITAS
+// ========================
+async function salvarReceita(receita) {
+  const db = initDB();
+  if (!db) return null;
+  try {
+    const query = `
+      INSERT INTO receitas (id, atendimento_id, numero, pdf_url, medicamentos, dados_completos, status, data_emissao, data_validade, origem)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        cancelada_em = EXCLUDED.cancelada_em,
+        motivo_cancelamento = EXCLUDED.motivo_cancelamento,
+        dados_completos = EXCLUDED.dados_completos
+      RETURNING *
+    `;
+    const values = [
+      receita.id,
+      receita.atendimentoId,
+      receita.numero || null,
+      receita.pdfUrl || null,
+      JSON.stringify(receita.medicamentos || []),
+      JSON.stringify(receita),
+      receita.status || 'ATIVA',
+      receita.data_emissao || new Date(),
+      receita.data_validade || null,
+      receita.origem || 'SISTEMA'
+    ];
+    const result = await db.query(query, values);
+    return result.rows[0];
+  } catch (err) {
+    console.error('Erro ao salvar receita:', err);
+    return null;
+  }
+}
+
+async function buscarReceitaPorId(id) {
+  const db = initDB();
+  if (!db) return null;
+  try {
+    const result = await db.query('SELECT * FROM receitas WHERE id = $1', [id]);
+    if (result.rows.length === 0) return null;
+    return {
+      ...result.rows[0].dados_completos,
+      status: result.rows[0].status,
+      cancelada_em: result.rows[0].cancelada_em,
+      motivo_cancelamento: result.rows[0].motivo_cancelamento
+    };
+  } catch (err) {
+    console.error('Erro ao buscar receita:', err);
+    return null;
+  }
+}
+
+async function listarReceitasPorAtendimento(atendimentoId) {
+  const db = initDB();
+  if (!db) return [];
+  try {
+    const result = await db.query(
+      'SELECT dados_completos FROM receitas WHERE atendimento_id = $1 ORDER BY data_emissao DESC',
+      [atendimentoId]
+    );
+    return result.rows.map(r => r.dados_completos);
+  } catch (err) {
+    console.error('Erro ao listar receitas:', err);
+    return [];
+  }
+}
+
+async function atualizarStatusReceita(id, status, motivo = null) {
+  const db = initDB();
+  if (!db) return false;
+  try {
+    const query = `
+      UPDATE receitas 
+      SET status = $2, 
+          motivo_cancelamento = $3, 
+          cancelada_em = CASE WHEN $2 = 'CANCELADA' THEN NOW() ELSE cancelada_em END,
+          dados_completos = jsonb_set(dados_completos, '{status}', to_jsonb($2::text))
+      WHERE id = $1
+    `;
+    await db.query(query, [id, status, motivo]);
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar status da receita:', err);
+    return false;
+  }
 }
 
 // ========================
@@ -506,5 +618,9 @@ module.exports = {
   closeConnection,
   adicionarFilaSuporte,
   getFilaSuporte,
-  responderFilaSuporte
+  responderFilaSuporte,
+  salvarReceita,
+  buscarReceitaPorId,
+  listarReceitasPorAtendimento,
+  atualizarStatusReceita
 };
