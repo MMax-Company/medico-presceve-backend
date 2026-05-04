@@ -413,21 +413,7 @@ app.get('/healthz', async (req, res) => {
   }
 })
 
-app.get('/', (req, res) => {
-  res.json({
-    status: 'online',
-    versao: '3.0',
-    ambiente: process.env.NODE_ENV || 'development',
-    endpoints: {
-      healthz: '/healthz',
-      triagem: 'POST /api/webhook/triagem',
-      pagamento: 'GET /api/payment/:id',
-      login: 'POST /login',
-      fila: 'GET /api/fila',
-      decisao: 'POST /api/decisao/:id'
-    }
-  })
-})
+// Rota raiz removida para dar prioridade ao Dashboard estático
 
 // ========================
 // 🔐 LOGIN
