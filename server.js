@@ -172,17 +172,47 @@ async function enviarWhatsAppOficial(telefone, mensagem) {
 
   try {
     const axios = require('axios')
-    const response = await axios.post(
-      `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
-      {
-        token: process.env.ULTRAMSG_TOKEN,
-        to: telefone,
-        body: mensagem
-      }
-    )
-    return response.data.success === true
+    
+    // Se tiver variáveis da Meta (Facebook/WhatsApp Cloud API)
+    if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+      console.log('📱 Usando WhatsApp Cloud API (Meta)')
+      const response = await axios.post(
+        `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        {
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: telefone,
+          type: "text",
+          text: { body: mensagem }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+      return !!response.data.messages
+    } 
+    
+    // Fallback para UltraMsg se configurado
+    if (process.env.ULTRAMSG_INSTANCE && process.env.ULTRAMSG_TOKEN) {
+      console.log('📱 Usando UltraMsg API')
+      const response = await axios.post(
+        `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
+        {
+          token: process.env.ULTRAMSG_TOKEN,
+          to: telefone,
+          body: mensagem
+        }
+      )
+      return response.data.success === true
+    }
+
+    console.warn('⚠️ Nenhuma API de WhatsApp configurada corretamente.')
+    return false
   } catch (error) {
-    console.error('❌ Erro WhatsApp:', error.message)
+    console.error('❌ Erro WhatsApp:', error.response?.data || error.message)
     return false
   }
 }
