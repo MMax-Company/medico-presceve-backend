@@ -162,57 +162,29 @@ app.use(helmet({
 // ========================
 const WHATSAPP_MODE = process.env.WHATSAPP_MODE || 'test'
 
-async function enviarWhatsAppOficial(telefone, mensagem) {
-  if (WHATSAPP_MODE === 'test') {
-    console.log(`\n📱 [MODO TESTE] WhatsApp NÃO enviado`)
-    console.log(`   Para: ${telefone}`)
-    console.log(`   Mensagem: ${mensagem.substring(0, 100)}...\n`)
-    return true
-  }
-
+async function enviarWhatsAppOficial(telefone, mensagem, tipo = 'notificacao') {
+  console.log(`📡 [N8N] Enviando notificação para o n8n para o telefone: ${telefone}`)
+  
   try {
     const axios = require('axios')
-    
-    // Se tiver variáveis da Meta (Facebook/WhatsApp Cloud API)
-    if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
-      console.log('📱 Usando WhatsApp Cloud API (Meta)')
-      const response = await axios.post(
-        `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-        {
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: telefone,
-          type: "text",
-          text: { body: mensagem }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-      return !!response.data.messages
-    } 
-    
-    // Fallback para UltraMsg se configurado
-    if (process.env.ULTRAMSG_INSTANCE && process.env.ULTRAMSG_TOKEN) {
-      console.log('📱 Usando UltraMsg API')
-      const response = await axios.post(
-        `https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`,
-        {
-          token: process.env.ULTRAMSG_TOKEN,
-          to: telefone,
-          body: mensagem
-        }
-      )
-      return response.data.success === true
+    const webhookUrl = process.env.N8N_WHATSAPP_WEBHOOK_URL
+
+    if (!webhookUrl) {
+      console.warn('⚠️ N8N_WHATSAPP_WEBHOOK_URL não configurado. Mensagem não enviada.')
+      console.log(`[LOG] Destino: ${telefone} | Mensagem: ${mensagem}`)
+      return true
     }
 
-    console.warn('⚠️ Nenhuma API de WhatsApp configurada corretamente.')
-    return false
+    await axios.post(webhookUrl, {
+      telefone,
+      mensagem,
+      tipo,
+      timestamp: new Date().toISOString()
+    })
+
+    return true
   } catch (error) {
-    console.error('❌ Erro WhatsApp:', error.response?.data || error.message)
+    console.error('❌ Erro ao notificar n8n:', error.message)
     return false
   }
 }
