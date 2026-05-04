@@ -700,7 +700,7 @@ app.get('/api/fila', auth, async (req, res) => {
         paciente_nome: safeDecrypt(a.paciente_nome),
         paciente_telefone: safeDecrypt(a.paciente_telefone),
         // Ponto 3: Dados clínicos visíveis para o médico decidir
-        doenca: dadosClinicos.doenca || 'N/A',
+        doencas: dadosClinicos.doenca || dadosClinicos.condicao || 'N/A',
         medicacao_em_uso: dadosClinicos.medicacao_em_uso || 'N/A',
         tempo_doenca: dadosClinicos.tempo_doenca || 'N/A',
         receita_vencida_dias: dadosClinicos.receita_vencida_dias || 'N/A',
@@ -738,7 +738,7 @@ app.get('/api/atendimentos', auth, async (req, res) => {
         paciente_cpf: safeDecrypt(a.paciente_cpf),
         paciente_email: safeDecrypt(a.paciente_email),
         // Ponto 3: Dados clínicos no painel
-        doenca: dadosClinicos.doenca || 'N/A',
+        doencas: dadosClinicos.doenca || dadosClinicos.condicao || 'N/A',
         medicacao_em_uso: dadosClinicos.medicacao_em_uso || 'N/A',
         tempo_doenca: dadosClinicos.tempo_doenca || 'N/A',
         receita_vencida_dias: dadosClinicos.receita_vencida_dias || 'N/A',
@@ -769,13 +769,13 @@ app.get('/api/atendimento/:id', auth, async (req, res) => {
 
     const dadosClinicos = at.dados_clinicos || at.triagem || {}
 
-    res.json({
+      res.json({
       id: at.id,
       paciente_nome: safeDecrypt(at.paciente_nome),
       paciente_telefone: safeDecrypt(at.paciente_telefone),
       paciente_cpf: safeDecrypt(at.paciente_cpf),
       paciente_email: safeDecrypt(at.paciente_email),
-      doenca: dadosClinicos.doenca || 'N/A',
+      doencas: dadosClinicos.doenca || dadosClinicos.condicao || 'N/A',
       medicacao_em_uso: dadosClinicos.medicacao_em_uso || 'N/A',
       tempo_doenca: dadosClinicos.tempo_doenca || 'N/A',
       receita_vencida_dias: dadosClinicos.receita_vencida_dias || 'N/A',
@@ -1666,7 +1666,7 @@ app.get('/painel-medico', (req, res) => {
           </div>
           <div class="patient-info">
             <div class="info-item"><i class="fas fa-phone"></i> \${a.paciente_telefone || 'Não informado'}</div>
-            <div class="info-item"><i class="fas fa-notes-medical"></i> \${a.doencas || 'Não informada'}</div>
+             <div class="info-item"><i class="fas fa-notes-medical"></i> ${a.doencas || a.doenca || 'Não informada'}</div>
             <div class="info-item"><i class="fas fa-calendar-alt"></i> \${new Date(a.criado_em).toLocaleDateString()}</div>
           </div>
           <div class="card-actions">
@@ -1739,7 +1739,7 @@ app.get('/painel-medico', (req, res) => {
         </div>
         <div class="form-group">
           <label><i class="fas fa-notes-medical"></i> Doença/Queixa</label>
-          <textarea disabled>\${a.doencas || 'Não informado'}</textarea>
+          <textarea disabled>${a.doencas || a.doenca || 'Não informado'}</textarea>
         </div>
         <div class="form-group">
           <label><i class="fas fa-capsules"></i> Medicamento Recomendado</label>
