@@ -229,9 +229,12 @@ async function verificarStatusConta() {
     };
   }
   
+  const keyCheck = await validarChaves();
+  
   return {
     status: 'ok',
     mensagem: 'Conta Memed configurada corretamente',
+    keys: keyCheck,
     prescritor: {
       nome: PRESCRITOR_DATA.data.attributes.nome,
       sobrenome: PRESCRITOR_DATA.data.attributes.sobrenome,
@@ -239,6 +242,48 @@ async function verificarStatusConta() {
       crm: `${PRESCRITOR_DATA.data.attributes.board.board_code} ${PRESCRITOR_DATA.data.attributes.board.board_number}`
     }
   };
+}
+
+/**
+ * Valida se o par de chaves (API-KEY e SECRET-KEY) está ativo e funcional
+ * conforme documentação oficial da Memed.
+ */
+async function validarChaves() {
+  if (!API_KEY || !SECRET_KEY) {
+    return { ativo: false, mensagem: 'Chaves não configuradas' };
+  }
+
+  try {
+    console.log('🧪 Validando par de chaves na Memed...');
+    const response = await axios.get(
+      `${MEMED_API_URL}/v1/sinapse-prescricao/check-key?api-key=${API_KEY}&secret-key=${SECRET_KEY}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'DoctorPrescreve/1.0'
+        },
+        timeout: 15000
+      }
+    );
+
+    if (response.status === 200) {
+      console.log('✅ Par de chaves validado com sucesso!');
+      return { ativo: true, mensagem: 'Chaves ativas e funcionais' };
+    } else {
+      return { ativo: false, mensagem: `Status inesperado: ${response.status}` };
+    }
+  } catch (error) {
+    console.error('❌ Erro ao validar chaves:');
+    const status = error.response?.status;
+    const mensagem = error.response?.data?.message || error.message;
+    
+    return { 
+      ativo: false, 
+      status,
+      mensagem: status === 401 ? 'Chaves inválidas ou inativas' : mensagem 
+    };
+  }
 }
 
 // ========================
@@ -257,5 +302,6 @@ module.exports = {
   testarConexao,
   renovarToken,
   verificarStatusConta,
+  validarChaves,
   obterTokenParaFrontend
 };
