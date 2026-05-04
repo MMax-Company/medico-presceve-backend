@@ -1,0 +1,858 @@
+{
+  "active": false,
+  "connections": {
+    "Chamar Backend1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "If2",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript EXTRAIR DADOS": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request3",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "EXTRAIR DADOS": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "IF1",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gerar Resp ": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validar Menu",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gerar Resp 1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request6",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gerar Resp Erro": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request5",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "EXTRAIR DADOS",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "IF": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gerar Resp Erro",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "IF2",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "IF1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gerar Resp 1",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Gerar Resp ",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "IF2": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Link de acesso",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Suporte",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Resp Aprovado Typebot",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Resp Reprovado Typbot",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Link de acesso": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request2",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Normalizar Dados1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Chamar Backend1",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Processar Resp Aprovacao": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Processar Resp Reprovacao": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request1",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Resp Aprovado Typebot": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Processar Resp Aprovacao",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Resp Reprovado Typbot": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Processar Resp Reprovacao",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Suporte": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Suporte1",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Suporte1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "HTTP Request4",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Validar Menu": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "IF",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Code in JavaScript EXTRAIR DADOS",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook Typebot1": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Normalizar Dados1",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "URgH3YRsSsBkiwux",
+  "meta": {
+    "instanceId": "007f5180726141cc25461b8bcb636bda14950de6285034125e902e4099b229c1",
+    "templateCredsSetupCompleted": true
+  },
+  "name": "Doctor Prescreve - Supabase (CORRIGIDO)",
+  "nodes": [
+    {
+      "id": "a3e897e2-3906-4453-a1d8-4983d5063b2b",
+      "name": "If2",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "fb89e822-79cb-498b-9011-e56dff7340b4",
+              "leftValue": "={{ $json.success }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        -3392,
+        -1024
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3
+    },
+    {
+      "id": "3748cc43-4cb8-47e0-aaac-948b1d5290f8",
+      "name": "Webhook Typebot1",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "responseMode": "responseNode"
+      },
+      "position": [
+        -4064,
+        -1024
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "3c249b71-db4e-4cc7-80b0-eaf4a8382f8e"
+    },
+    {
+      "id": "0d3f6395-20d6-4c61-86e6-70bedbccc099",
+      "name": "Normalizar Dados1",
+      "parameters": {
+        "functionCode": "const raw = $input.first().json;\n\n// Se vier encapsulado\nconst dados = raw.body || raw.data || raw;\n\n// Ajustar data (DDMMYYYY → YYYY-MM-DD)\nlet dataNascimento = dados.data_nascimento || \"\";\n\nif (dataNascimento.length === 8) {\n  const dia = dataNascimento.substring(0, 2);\n  const mes = dataNascimento.substring(2, 4);\n  const ano = dataNascimento.substring(4, 8);\n  dataNascimento = `${ano}-${mes}-${dia}`;\n}\n\n// Retorno estruturado\nreturn [\n  {\n    json: {\n      paciente: {\n        nome: dados.nome || \"Paciente\",\n        cpf: dados.cpf || \"\",\n        telefone: String(dados.telefone || \"\").replace(/\\D/g, \"\"),\n        email: dados.email || \"\",\n        data_nascimento: dataNascimento\n      },\n      triagem: {\n        doencas: dados.doencas || [],\n        medicamento: dados.medicamento || \"\",\n        medicamento2: dados.medicamento2 || \"\",\n        tempoUso: dados.tempoUso || \"\",\n        sinaisAlerta: dados.sinaisAlerta || \"Nao\"\n      }\n    }\n  }\n];"
+      },
+      "position": [
+        -3840,
+        -1024
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "bac8d835-05a1-4b1e-98a1-edf35ba2bf4c",
+      "name": "Chamar Backend1",
+      "parameters": {
+        "body": "={{ atendimento }}",
+        "contentType": "form-urlencoded",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "string",
+        "url": "https://SEU-BACKEND.up.railway.app/api/webhook/triagem"
+      },
+      "position": [
+        -3616,
+        -1024
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4
+    },
+    {
+      "id": "298561c4-ec80-4287-807f-00625c5678e1",
+      "name": "Link de acesso",
+      "parameters": {
+        "functionCode": "return [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta: `👨‍⚕️ Consulta iniciada\n\nClique abaixo para continuar:\n\nhttps://SEU-TYPEBOT\n\nAtendimento rápido e seguro.`\n    }\n  }\n];"
+      },
+      "position": [
+        -2048,
+        -512
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "ee8ce7c1-cdc8-421f-b5f5-76e0e838312e",
+      "name": "Resp Reprovado Typbot",
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"message\": \"Solicitação recebida!\"\n}"
+      },
+      "position": [
+        -3168,
+        -928
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "70e2f880-f36e-4e6a-81fb-70f360a81247",
+      "name": "Resp Aprovado Typebot",
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Solicitação recebida!\"\n}"
+      },
+      "position": [
+        -3168,
+        -1120
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "b81b0706-ee21-478d-8a81-3c7989440088",
+      "name": "Processar Resp Reprovacao",
+      "parameters": {
+        "functionCode": "const telefone = $json.telefone || \"\";\n\nconst resposta = `❌ *Atendimento não recomendado*\n\nIdentificamos que seu caso necessita de avaliação presencial.\n\n🏥 Procure uma unidade de saúde.\n\n⚠️ Essa decisão visa garantir sua segurança.\n\nDoctor Prescreve - Cuidando de você.`;\n\nreturn [{ json: { telefone, resposta } }];"
+      },
+      "position": [
+        -2944,
+        -928
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "id": "e4741bcc-bf0c-483b-96fa-b54371997370",
+      "name": "Processar Resp Aprovacao",
+      "parameters": {
+        "functionCode": "const telefone = $json.telefone || \"\";\nconst nome = $json.paciente_nome || \"Paciente\";\nconst paymentUrl = $json.payment_url || \"\";\n\nconst resposta = `✅ *Consulta liberada, ${nome}!*\n\nSua avaliação foi concluída com sucesso.\n\n💳 Finalize o pagamento no link:\n👉 ${paymentUrl}\n\n💰 Valor: R$ 69,90  \n⏱️ Atendimento em até 2 horas após pagamento\n\n🔒 Atendimento médico seguro e sigiloso.`;\n\nreturn [{ json: { telefone, resposta } }];"
+      },
+      "position": [
+        -2944,
+        -1120
+      ],
+      "retryOnFail": false,
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "1ae3e34d-8644-4416-9a15-a33e98953fbe",
+      "name": "HTTP Request",
+      "parameters": {
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{$json.telefone}}"
+            },
+            {
+              "name": "body",
+              "value": "={{$json.resposta}}"
+            }
+          ]
+        },
+        "contentType": "form-urlencoded",
+        "method": "POST",
+        "options": {},
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "mi4lxjq8vwicp2lt"
+            }
+          ]
+        },
+        "sendBody": true,
+        "sendQuery": true
+      },
+      "position": [
+        -2720,
+        -1120
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "54ee8b90-f23f-4674-8994-907f7833a73d",
+      "name": "IF1",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e1ab95af-fcde-46cd-8855-fc0aee6dd4ea",
+              "leftValue": "mensagem",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "oi"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        -3168,
+        -608
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3
+    },
+    {
+      "id": "edf0e91c-1c8e-48e6-9a67-7d94308d1d64",
+      "name": "Validar Menu",
+      "parameters": {
+        "functionCode": "const msg = $json.mensagem;\n\nlet resposta = \"\";\n\nif (msg === \"1\") {\n  resposta = \"Perfeito 👨‍⚕️\\n\\nClique abaixo para iniciar sua consulta:\\nhttps://SEU-TYPEBOT\";\n} else if (msg === \"2\") {\n  resposta = \"Você será direcionado ao suporte.\\nAguarde um momento.\";\n} else {\n  resposta = \"Opção inválida.\\nDigite 1 para consulta ou 2 para suporte.\";\n}\n\nreturn [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta\n    }\n  }\n];"
+      },
+      "position": [
+        -2720,
+        -512
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "7f654122-4468-4bad-af76-dc0d553f28f2",
+      "name": "IF2",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e1ab95af-fcde-46cd-8855-fc0aee6dd4ea",
+              "leftValue": "={{ $json.mensagem }}",
+              "operator": {
+                "operation": "equals",
+                "type": "number"
+              },
+              "rightValue": 1
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        -2272,
+        -432
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3
+    },
+    {
+      "id": "402549ce-fbf5-4ab8-a33e-11f45d300fc7",
+      "name": "IF",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e1ab95af-fcde-46cd-8855-fc0aee6dd4ea",
+              "leftValue": "{{$json.mensagem}}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "1"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        -2496,
+        -512
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3
+    },
+    {
+      "id": "0b01baa0-86a7-4d09-9b86-08367dd9ad11",
+      "name": "Gerar Resp Erro",
+      "parameters": {
+        "functionCode": "return [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta: `⚠️ Ocorreu um erro no atendimento.\n\nPor favor, tente novamente digitando \"oi\".`\n    }\n  }\n];"
+      },
+      "position": [
+        -2272,
+        -704
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "b3616816-9d91-47a2-bbb4-b159fdf9f896",
+      "name": "HTTP Request1",
+      "parameters": {
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "=={{$json.telefone}}"
+            },
+            {
+              "name": "body",
+              "value": "=={{$json.resposta}}"
+            }
+          ]
+        },
+        "contentType": "form-urlencoded",
+        "method": "POST",
+        "options": {},
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "mi4lxjq8vwicp2lt"
+            }
+          ]
+        },
+        "sendBody": true,
+        "sendQuery": true
+      },
+      "position": [
+        -2720,
+        -928
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "5f94a526-bceb-4cca-940c-80902869991a",
+      "name": "HTTP Request2",
+      "parameters": {
+        "jsonBody": "={\n  \"token\": \"mi4lxjq8vwicp2lt\",\n  \"to\": \"{{ $json.telefone }}\",\n  \"body\": \"{{ $json.resposta }}\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json"
+      },
+      "position": [
+        -1824,
+        -512
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "785cb46b-ad33-49ea-aa16-7c20e009e72f",
+      "name": "HTTP Request4",
+      "parameters": {
+        "jsonBody": "={\n  \"token\": \"mi4lxjq8vwicp2lt\",\n  \"to\": \"{{ $json.telefone }}\",\n  \"body\": \"{{ $json.resposta }}\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json"
+      },
+      "position": [
+        -1664,
+        -320
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "351c46fd-b7e4-437b-8dc1-8678f29dd4c8",
+      "name": "HTTP Request5",
+      "parameters": {
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "=={{$json.telefone}}"
+            },
+            {
+              "name": "body",
+              "value": "=={{$json.resposta}}"
+            }
+          ]
+        },
+        "contentType": "form-urlencoded",
+        "jsonQuery": "={  \"token\": \"mi4lxjq8vwicp2lt\",\n  \"to\": \"{{ $json.telefone }}\",\n  \"body\": \"{{ $json.resposta }}\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "sendQuery": true,
+        "specifyQuery": "json"
+      },
+      "position": [
+        -2048,
+        -704
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "55ceef80-7e95-45b7-b691-e93d42cd8d95",
+      "name": "HTTP Request6",
+      "parameters": {
+        "jsonBody": "={\n  \"token\": \"mi4lxjq8vwicp2lt\",\n  \"to\": \"{{ $json.telefone }}\",\n  \"body\": \"{{ $json.resposta }}\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json"
+      },
+      "position": [
+        -2720,
+        -688
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "b6e27333-e84f-44b2-aaf9-ea0ff950beed",
+      "name": "HTTP Request3",
+      "parameters": {
+        "jsonBody": "={\n  \"nome\": \"{{ $json.nome || '' }}\",\n  \"doencas\": \"{{ $json.doencas || '' }}\",\n  \"medicamentos\": \"{{ $json.medicamentos || '' }}\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://medico-prescreve-backend-production.up.railway.app/suporte/entrar"
+      },
+      "position": [
+        -3616,
+        -608
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+    {
+      "id": "a983f60a-5d01-4094-92db-2fd5608aa7d9",
+      "name": "Code in JavaScript EXTRAIR DADOS",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Log para debug (opcional)\nconsole.log('Dados recebidos:', item);\n\n// Extrair telefone (remove @c.us e remove 55)\nlet telefone = item.de || '';\ntelefone = telefone.replace('@c.us', '').replace('55', '');\n\n// Extrair nome\nconst nome = item.pushname || 'Paciente WhatsApp';\n\n// Retornar os dados formatados\nreturn [{\n  json: {\n    telefone: telefone,\n    nome: nome\n  }\n}];"
+      },
+      "position": [
+        -3840,
+        -608
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "ce701595-0993-4b1e-8144-fe435a96f816",
+      "name": "Gerar Resp 1",
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta: `Olá 👋\n\nBem-vindo ao Doctor Prescreve.\n\nPara iniciar sua consulta, clique no link abaixo:\n\nhttps://typebot.co/doctor-prescreve\nAtendimento rápido e seguro 🏥`\n    }\n  }\n];"
+      },
+      "position": [
+        -2928,
+        -688
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "62baa120-8846-4164-b7a6-45b835c29e3f",
+      "name": "Gerar Resp ",
+      "parameters": {
+        "jsCode": "const resposta = \"Não entendi sua mensagem 📩\\n\\nDigite:\\n1 - Consulta médica\\n2 - Suporte\";\n\nreturn [\n  {\n    json: {\n      telefone: $json.telefone || \"\",\n      resposta\n    }\n  }\n];"
+      },
+      "position": [
+        -2944,
+        -512
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "167fa5bf-c46e-40b1-8c3a-63759c4c0da8",
+      "name": "Suporte",
+      "parameters": {
+        "functionCode": "return [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta: `📞 Suporte\n\nVocê foi encaminhado para nosso atendimento.\n\nAguarde um momento...`\n    }\n  }\n];"
+      },
+      "position": [
+        -2048,
+        -320
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "44ab6b26-e9c7-4a86-bae0-e8d130ab738f",
+      "name": "EXTRAIR DADOS",
+      "parameters": {
+        "functionCode": "const telefoneRaw = $json.telefone || $json.from || \"\";\n\nconst telefone = String(telefoneRaw)\n  .replace(\"@c.us\", \"\")\n  .replace(/\\D/g, \"\");\n\nreturn [\n  {\n    json: {\n      telefone,\n      mensagem: $json.mensagem || \"\"\n    }\n  }\n];"
+      },
+      "position": [
+        -3376,
+        -608
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    },
+    {
+      "id": "7eae441c-7355-49d3-b770-318cafff4620",
+      "name": "Webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "position": [
+        -4032,
+        -608
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "4b7ad6d8-3c65-4af7-ac0a-064046c0a914"
+    },
+    {
+      "id": "24f16324-0f2a-4640-ab68-bb22e724aa78",
+      "name": "Suporte1",
+      "parameters": {
+        "functionCode": "const resposta = ($json.resposta || \"\").replace(/\\n/g, \"\\\\n\");\n\nreturn [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta\n    }\n  }\n];"
+      },
+      "position": [
+        -1856,
+        -320
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {
+    "HTTP Request2": [
+      {
+        "json": {
+          "code": 1,
+          "name": "First item"
+        }
+      },
+      {
+        "json": {
+          "code": 2,
+          "name": "Second item"
+        }
+      }
+    ]
+  },
+  "settings": {
+    "availableInMCP": false,
+    "binaryMode": "separate",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed"
+  },
+  "tags": [],
+  "versionId": "04a90ca4-4d6a-4074-979c-f1ba8c4a3e48"
+}
