@@ -126,6 +126,16 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 // ========================
 app.use(cors())
 app.use(express.json())
+
+// Servir arquivos estáticos do dashboard se existirem
+const dashboardDistPath = path.join(__dirname, 'dashboard-medico', 'dist', 'public')
+if (fs.existsSync(dashboardDistPath)) {
+  console.log('✅ Dashboard detectado em:', dashboardDistPath)
+  app.use(express.static(dashboardDistPath))
+} else {
+  console.warn('⚠️ Dashboard (dist/public) não encontrado. O frontend pode não carregar.')
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -2596,6 +2606,17 @@ process.on('SIGINT', async () => {
   console.log('🛑 SIGINT recebido. Encerrando...')
   await db.closeConnection()
   process.exit(0)
+})
+
+// Rota catch-all para o Dashboard (Single Page Application)
+// Deve vir DEPOIS de todas as rotas da API
+app.get('*', (req, res) => {
+  const indexPath = path.join(__dirname, 'dashboard-medico', 'dist', 'public', 'index.html')
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath)
+  } else {
+    res.status(404).json({ error: 'Dashboard não encontrado. Verifique se o build foi concluído.' })
+  }
 })
 
 startServer()
