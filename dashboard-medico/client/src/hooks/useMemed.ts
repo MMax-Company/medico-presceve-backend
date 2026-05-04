@@ -197,6 +197,11 @@ export function useMemed(atendimentoId?: string) {
     };
 
     try {
+      // Validar se o MdHub está realmente pronto
+      if (!(window as any).MdHub?.is_ready) {
+        console.warn('⚠️ MdHub não está totalmente pronto, tentando inicializar...');
+      }
+
       // Enviar comando para abrir o módulo
       MdHub.command.send(
         'plataforma.prescricao',
@@ -204,11 +209,21 @@ export function useMemed(atendimentoId?: string) {
         payload
       );
       console.log('✅ Comando enviado para abrir prescrição');
+      
+      // Timeout de segurança: se não abrir em 10s, avisar o usuário
+      setTimeout(() => {
+        if (isOpeningModal) {
+          console.warn('⚠️ O widget da Memed está demorando para responder.');
+        }
+      }, 10000);
+
     } catch (error) {
       console.error('❌ Erro ao abrir prescrição:', error);
       setIsOpeningModal(false);
+      // Fallback: Alertar erro crítico
+      alert('Erro crítico ao abrir Memed. Verifique se o bloqueador de pop-ups está ativo ou use o modo de contingência.');
     }
-  }, [tokenQuery.data?.token, atendimentoId]);
+  }, [tokenQuery.data?.token, atendimentoId, isOpeningModal]);
 
   /**
    * Desregistra listeners de eventos

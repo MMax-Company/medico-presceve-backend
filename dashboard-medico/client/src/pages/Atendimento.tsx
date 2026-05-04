@@ -174,11 +174,25 @@ export default function Atendimento() {
       toast.info('Finalize a prescrição na interface da Memed');
     } else if (!memed.memedReady) {
       toast.error('Memed ainda está carregando. Tente novamente em alguns segundos.');
+      // Fallback manual: Se demorar muito, permitir aprovação sem Memed (contingência)
+      if (window.confirm('A Memed está demorando para carregar. Deseja aprovar este atendimento manualmente (sem receita digital)?')) {
+        handleAprovarManual();
+      }
     } else {
       toast.error('Dados do paciente não disponíveis');
     }
   };
 
+  const handleAprovarManual = async () => {
+    try {
+      await aprovarMutation.mutateAsync({
+        atendimentoId,
+        orientacoes: orientacoes + "\n\n(Aprovação manual realizada por contingência técnica)",
+      });
+      toast.success('Atendimento aprovado manualmente');
+    } catch (error) {
+      toast.error('Erro ao aprovar manualmente');
+    }
   };
 
   const handleRecusar = () => {
