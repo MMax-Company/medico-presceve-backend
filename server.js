@@ -125,17 +125,12 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 // 🛡️ MIDDLEWARES GLOBAIS
 // ========================
 app.use(cors())
-app.use(express.json())
 
-// Servir arquivos estáticos do dashboard se existirem
+// PRIORIDADE MÁXIMA: Servir arquivos estáticos do dashboard
 const dashboardDistPath = path.join(__dirname, 'dashboard-medico', 'dist', 'public')
-if (fs.existsSync(dashboardDistPath)) {
-  console.log('✅ Dashboard detectado em:', dashboardDistPath)
-  app.use(express.static(dashboardDistPath))
-} else {
-  console.warn('⚠️ Dashboard (dist/public) não encontrado. O frontend pode não carregar.')
-}
+app.use(express.static(dashboardDistPath))
 
+app.use(express.json())
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
