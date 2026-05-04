@@ -35,12 +35,13 @@ export function useMemed(atendimentoId?: string) {
       existingScript.remove();
     }
 
-    // Criar e injetar script com token como data attribute (Ponto 2 e 3)
+    // Criar e injetar script com token conforme documentação oficial
     const script = document.createElement('script');
     script.id = 'mdhub-script';
     script.src = 'https://cdn.memed.com.br/widget/mdhub.js';
     script.async = true;
-    script.dataset.token = tokenQuery.data.token;
+    // Requisito: Atributo 'token' direto no script para autenticação frontend
+    script.setAttribute('token', tokenQuery.data.token);
     script.setAttribute('data-environment', 'production');
 
     script.onload = () => {
