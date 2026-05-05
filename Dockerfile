@@ -6,8 +6,11 @@ RUN npm install -g pnpm
 # --- Dashboard Build Stage ---
 FROM base AS dashboard-builder
 WORKDIR /app/dashboard-medico
-# O dashboard usa pnpm
+
+# Copiar arquivos de dependências e a pasta de patches (necessária para pnpm install)
 COPY dashboard-medico/package.json dashboard-medico/pnpm-lock.yaml ./
+COPY dashboard-medico/patches ./patches
+
 RUN pnpm install --frozen-lockfile
 COPY dashboard-medico/ .
 RUN pnpm build
