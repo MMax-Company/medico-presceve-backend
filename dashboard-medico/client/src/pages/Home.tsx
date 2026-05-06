@@ -268,6 +268,15 @@ export default function Home() {
                   <AlertCircle className="w-4 h-4 mr-2" />
                   Histórico de Atendimentos
                 </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation("/documentos")}
+                  className="w-full border-[#1e3a8a] text-[#1e3a8a] hover:bg-blue-50"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Documentos e Termos
+                </Button>
               </div>
             </div>
           </Card>
