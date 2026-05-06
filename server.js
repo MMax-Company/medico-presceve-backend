@@ -545,6 +545,11 @@ app.post('/api/webhook/triagem', async (req, res) => {
   }
 })
 
+  } catch(e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ========================
 // 💳 PAGAMENTO (STRIPE)
 // ========================
