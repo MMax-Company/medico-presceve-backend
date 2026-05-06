@@ -15,7 +15,7 @@
       "id": "lgpd",
       "type": "choice",
       "data": {
-        "text": "Para continuar, você aceita os termos?\n\n☑ LGPD\n☑ Telemedicina\n☑ Veracidade das informações",
+        "text": "Para continuar, você aceita os termos?\n\n☑ [Política de Privacidade e LGPD](https://SEU-DOMINIO.com/docs/Politica_Privacidade_LGPD.pdf)\n☑ [Termos de Uso e Telemedicina](https://SEU-DOMINIO.com/docs/Termos_de_Uso.pdf)\n☑ Veracidade das informações",
         "options": [
           {
             "label": "CIENTE E AUTORIZO",
