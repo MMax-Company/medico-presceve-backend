@@ -356,7 +356,7 @@
         "options": {},
         "sendBody": true,
         "specifyBody": "string",
-        "url": "https://SEU-BACKEND.up.railway.app/api/webhook/triagem"
+        "url": "https://doctorprescreve.com.br/api/webhook/triagem"
       },
       "position": [
         -3616,
@@ -369,7 +369,7 @@
       "id": "298561c4-ec80-4287-807f-00625c5678e1",
       "name": "Link de acesso",
       "parameters": {
-        "functionCode": "return [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta: `👨‍⚕️ Consulta iniciada\n\nClique abaixo para continuar:\n\nhttps://SEU-TYPEBOT\n\nAtendimento rápido e seguro.`\n    }\n  }\n];"
+        "functionCode": "return [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta: `👨‍⚕️ Consulta iniciada\n\nClique abaixo para continuar:\n\nhttps://typebot.co/doctor-prescreve\n\nAtendimento rápido e seguro.`\n    }\n  }\n];"
       },
       "position": [
         -2048,
@@ -511,7 +511,7 @@
       "id": "edf0e91c-1c8e-48e6-9a67-7d94308d1d64",
       "name": "Validar Menu",
       "parameters": {
-        "functionCode": "const msg = $json.mensagem;\n\nlet resposta = \"\";\n\nif (msg === \"1\") {\n  resposta = \"Perfeito 👨‍⚕️\\n\\nClique abaixo para iniciar sua consulta:\\nhttps://SEU-TYPEBOT\";\n} else if (msg === \"2\") {\n  resposta = \"Você será direcionado ao suporte.\\nAguarde um momento.\";\n} else {\n  resposta = \"Opção inválida.\\nDigite 1 para consulta ou 2 para suporte.\";\n}\n\nreturn [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta\n    }\n  }\n];"
+        "functionCode": "const msg = $json.mensagem;\n\nlet resposta = \"\";\n\nif (msg === \"1\") {\n  resposta = \"Perfeito 👨‍⚕️\\n\\nClique abaixo para iniciar sua consulta:\\nhttps://typebot.co/doctor-prescreve\";\n} else if (msg === \"2\") {\n  resposta = \"Você será direcionado ao suporte.\\nAguarde um momento.\";\n} else {\n  resposta = \"Opção inválida.\\nDigite 1 para consulta ou 2 para suporte.\";\n}\n\nreturn [\n  {\n    json: {\n      telefone: $json.telefone,\n      resposta\n    }\n  }\n];"
       },
       "position": [
         -2720,
